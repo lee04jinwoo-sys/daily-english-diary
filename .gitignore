@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+venv/
+env/
+.pytest_cache/
+*.log
+
+# Node / Frontend
+node_modules/
+.npm
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# Environment & Private Data
+.env
+.env.*
+data/*.db
+data/*.db.backup
+data/*.sqlite
+data/*.sqlite3
+data/*.json
+
+# IDE
+.idea/
+.vscode/
+*.swp

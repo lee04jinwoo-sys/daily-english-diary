@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #fbfbfa;
+    color: #37352f;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .dark body,
+  body.dark,
+  html.dark body {
+    background-color: #191919;
+    color: #e6e6e6;
+  }
+}
+
+/* Custom Paper Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2e1db;
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f3f;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c8c7bf;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+/* Grammarly Highlight Underline Styles - 3-Tier Classification */
+
+/* 1. Accuracy: Rose / Red (Must-Fix Grammar & Spelling) */
+.highlight-accuracy, .highlight-grammar, .highlight-spelling {
+  background-color: rgba(244, 63, 94, 0.14);
+  border-bottom: 2px solid #f43f5e;
+  border-radius: 3px;
+  padding: 1px 2px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+.dark .highlight-accuracy, .dark .highlight-grammar, .dark .highlight-spelling {
+  background-color: rgba(251, 113, 133, 0.22);
+  border-bottom: 2px solid #fb7185;
+}
+.highlight-accuracy:hover, .highlight-accuracy.active,
+.highlight-grammar:hover, .highlight-grammar.active,
+.highlight-spelling:hover, .highlight-spelling.active {
+  background-color: rgba(244, 63, 94, 0.28);
+}
+.dark .highlight-accuracy:hover, .dark .highlight-accuracy.active,
+.dark .highlight-grammar:hover, .dark .highlight-grammar.active,
+.dark .highlight-spelling:hover, .dark .highlight-spelling.active {
+  background-color: rgba(251, 113, 133, 0.38);
+}
+
+/* 2. Idiom: Amber / Yellow (Native Phrasing & Collocation) */
+.highlight-idiom, .highlight-natural, .highlight-vocabulary {
+  background-color: rgba(245, 158, 11, 0.16);
+  border-bottom: 2px solid #f59e0b;
+  border-radius: 3px;
+  padding: 1px 2px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+.dark .highlight-idiom, .dark .highlight-natural, .dark .highlight-vocabulary {
+  background-color: rgba(251, 191, 36, 0.22);
+  border-bottom: 2px solid #fbbf24;
+}
+.highlight-idiom:hover, .highlight-idiom.active,
+.highlight-natural:hover, .highlight-natural.active,
+.highlight-vocabulary:hover, .highlight-vocabulary.active {
+  background-color: rgba(245, 158, 11, 0.32);
+}
+.dark .highlight-idiom:hover, .dark .highlight-idiom.active,
+.dark .highlight-natural:hover, .dark .highlight-natural.active,
+.dark .highlight-vocabulary:hover, .dark .highlight-vocabulary.active {
+  background-color: rgba(251, 191, 36, 0.42);
+}
+
+/* 3. Style: Sky / Blue (Stylistic Polish & Nuance) */
+.highlight-style, .highlight-clarity {
+  background-color: rgba(14, 165, 233, 0.14);
+  border-bottom: 2px solid #0ea5e9;
+  border-radius: 3px;
+  padding: 1px 2px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+.dark .highlight-style, .dark .highlight-clarity {
+  background-color: rgba(56, 189, 248, 0.22);
+  border-bottom: 2px solid #38bdf8;
+}
+.highlight-style:hover, .highlight-style.active,
+.highlight-clarity:hover, .highlight-clarity.active {
+  background-color: rgba(14, 165, 233, 0.28);
+}
+.dark .highlight-style:hover, .dark .highlight-style.active,
+.dark .highlight-clarity:hover, .dark .highlight-clarity.active {
+  background-color: rgba(56, 189, 248, 0.38);
+}
