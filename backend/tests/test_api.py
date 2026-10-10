@@ -1,17 +1,15 @@
 import pytest
-from httpx import AsyncClient, ASGITransport
-from app.main import app
 
 @pytest.mark.anyio
-async def test_health():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/health")
+async def test_health(client):
+    response = await client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 @pytest.mark.anyio
-async def test_diary_crud_and_stats():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+async def test_diary_crud_and_stats(client):
+    ac = client
+    if True:
         # 1. Save dummy test diary on isolated future date
         date_str = "2099-12-31"
         payload = {
@@ -43,10 +41,3 @@ async def test_diary_crud_and_stats():
         stats_data = res_stats.json()
         assert stats_data["total_diaries"] >= 1
         assert stats_data["total_words"] > 0
-
-        # Clean up test entry from database
-        import aiosqlite
-        from app.core.config import settings
-        async with aiosqlite.connect(settings.DATABASE_PATH) as db:
-            await db.execute("DELETE FROM diaries WHERE date = ?", (date_str,))
-            await db.commit()

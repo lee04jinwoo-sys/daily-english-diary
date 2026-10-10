@@ -59,9 +59,18 @@ async def init_db() -> None:
             end_idx INTEGER NOT NULL,
             is_applied INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
+            tier TEXT DEFAULT 'accuracy',
+            subcategory TEXT DEFAULT '',
             FOREIGN KEY (diary_date) REFERENCES diaries (date) ON DELETE CASCADE
         )
         """)
+
+        cursor = await db.execute("PRAGMA table_info(suggestions)")
+        sug_columns = [row[1] for row in await cursor.fetchall()]
+        if "tier" not in sug_columns:
+            await db.execute("ALTER TABLE suggestions ADD COLUMN tier TEXT DEFAULT 'accuracy'")
+        if "subcategory" not in sug_columns:
+            await db.execute("ALTER TABLE suggestions ADD COLUMN subcategory TEXT DEFAULT ''")
 
         # Anki cards history
         await db.execute("""

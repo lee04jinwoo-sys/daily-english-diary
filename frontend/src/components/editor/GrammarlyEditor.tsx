@@ -171,18 +171,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
 
     try {
       if (isAlreadySaved) {
-        // Toggle delete from Anki
-        const res = await api.deleteCard({ card_type: 'vocab', text: normalizedWord });
-        if (res.success) {
-          setSavedVocabIndexes((prev) => {
-            const next = new Set(prev);
-            next.delete(idx);
-            return next;
-          });
-          onShowToast(`'${normalizedWord}' 카드가 Anki에서 삭제되었습니다.`);
-        } else {
-          onShowToast(`삭제 실패: ${res.error}`);
-        }
+        onShowToast(`'${normalizedWord}'은(는) 이미 Anki에 있습니다.`);
       } else {
         // Add to Anki
         const res = await api.addVocabCard({
@@ -583,10 +572,10 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                             disabled={savingVocabIndex === idx}
                             className={`p-1.5 rounded-lg text-xs font-medium transition-all shrink-0 flex items-center space-x-1 border ${
                               savedVocabIndexes.has(idx)
-                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/40 dark:hover:text-red-300'
+                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                                 : 'bg-white dark:bg-[#252525] text-stone-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border-stone-200 dark:border-[#383838]'
                             }`}
-                            title={savedVocabIndexes.has(idx) ? '클릭 시 Anki에서 등록 취소(제거)' : 'Anki 단어장에 원클릭 저장'}
+                            title={savedVocabIndexes.has(idx) ? '이미 Anki에 있음' : 'Anki 단어장에 원클릭 저장'}
                           >
                             {savingVocabIndex === idx ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />

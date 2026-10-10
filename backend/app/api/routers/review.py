@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException, status
 from app.schemas.review import ReviewRequest, ReviewResponse
-from app.services.gemini_service import gemini_service
+from app.services.gemini_service import gemini_service, GeminiError
 from app.services.diary_service import diary_service
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,11 @@ async def review_diary(req: ReviewRequest):
 
         return review_result
 
+    except GeminiError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI 첨삭에 실패했습니다. 잠시 후 다시 시도해주세요: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Error reviewing diary: {e}", exc_info=True)
         raise HTTPException(

@@ -50,6 +50,10 @@ def clean_vocab_example(example: str) -> str:
     cleaned = re.sub(r"\s*[-:]\s*[가-힣\s,.~!?]+$", "", cleaned)
     return cleaned.strip()
 
+class GeminiError(RuntimeError):
+    """Raised when the AI review could not be produced. Never replaced with fake results."""
+
+
 class GeminiService:
     def __init__(self):
         self._client: Optional[genai.Client] = None
@@ -61,6 +65,18 @@ class GeminiService:
                 raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.")
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
         return self._client
+
+    async def _generate_json(self, prompt: str, temperature: float) -> dict:
+        response = await self.client.aio.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=temperature,
+                thinking_config=types.ThinkingConfig(thinking_budget=0)
+            )
+        )
+        return json.loads(response.text or "{}")
 
     def _find_exact_offsets(self, text: str, phrase: str, existing_spans: List[tuple]) -> tuple[int, int]:
         """Locates the exact start and end char offsets of a phrase in text without overlapping."""
@@ -182,18 +198,7 @@ class GeminiService:
 }}
 """
         try:
-            response = self.client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.3,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0)
-                )
-            )
-
-            raw_text = response.text or "{}"
-            data = json.loads(raw_text)
+            data = await self._generate_json(prompt, 0.3)
 
             # Process suggestions
             processed_suggestions: List[SuggestionItem] = []
@@ -305,18 +310,7 @@ class GeminiService:
 
         except Exception as e:
             logger.error(f"Gemini review error: {e}", exc_info=True)
-            return ReviewResponse(
-                date=date,
-                original_text=content,
-                corrected_text=content,
-                native_text=content,
-                overall_feedback=f"AI 첨삭 처리 중 일시적인 오류가 발생했습니다: {str(e)}",
-                followup_question="How do you feel about writing in English today?",
-                score=80,
-                suggestions=[],
-                sentence_pairs=[],
-                key_expressions=[]
-            )
+            raise GeminiError(str(e)) from e
 
     async def lookup_word(self, word: str, context: str = "") -> dict:
         """Instant dictionary lookup adhering to Anki Manager / Shadowing Player standards."""
@@ -345,16 +339,7 @@ class GeminiService:
 반드시 유효한 JSON 형식으로만 응답하십시오.
 """
         try:
-            response = self.client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.2,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0)
-                )
-            )
-            data = json.loads(response.text or "{}")
+            data = await self._generate_json(prompt, 0.2)
             return {
                 "word": data.get("word", norm_word),
                 "phonetic": data.get("phonetic", ""),
@@ -392,16 +377,7 @@ JSON 응답 규격:
 }}
 """
             try:
-                response = self.client.models.generate_content(
-                    model=settings.GEMINI_MODEL,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.2,
-                        thinking_config=types.ThinkingConfig(thinking_budget=0)
-                    )
-                )
-                res = json.loads(response.text or "{}")
+                res = await self._generate_json(prompt, 0.2)
                 return CardPreviewResponse(
                     card_type="sentence",
                     deck_name="1. Language::1.1. English::Sentence",
@@ -457,16 +433,7 @@ JSON 응답 규격:
 }}
 """
             try:
-                response = self.client.models.generate_content(
-                    model=settings.GEMINI_MODEL,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.2,
-                        thinking_config=types.ThinkingConfig(thinking_budget=0)
-                    )
-                )
-                res = json.loads(response.text or "{}")
+                res = await self._generate_json(prompt, 0.2)
                 return CardPreviewResponse(
                     card_type="vocab",
                     deck_name="1. Language::1.1. English::Vocabulary",

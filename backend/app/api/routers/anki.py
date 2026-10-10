@@ -9,24 +9,12 @@ from app.schemas.anki import (
     CardPreviewResponse,
     CheckExistingCardsRequest,
     CheckExistingCardsResponse,
-    DeleteCardRequest
 )
 from app.services.anki_service import anki_service
 from app.services.gemini_service import gemini_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/anki", tags=["Anki"])
-
-@router.post("/delete-card", response_model=AnkiActionResponse)
-async def delete_card(req: DeleteCardRequest):
-    """Deletes card matching text from Anki."""
-    res = anki_service.delete_card(req.card_type, req.text)
-    if not res.success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=res.error or "Anki 카드 삭제에 실패했습니다."
-        )
-    return res
 
 @router.post("/check-existing", response_model=CheckExistingCardsResponse)
 async def check_existing_cards(req: CheckExistingCardsRequest):

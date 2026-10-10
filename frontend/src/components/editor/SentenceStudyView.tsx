@@ -196,7 +196,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Direct 1-Click Anki Sentence Registration & Toggle Deletion
+  // Direct 1-Click Anki Sentence Registration (no deletion)
   const handleDirectAddSentence = async (key: string, sentenceText: string, translationText: string) => {
     const cleanSentence = sentenceText.trim();
     if (!cleanSentence) {
@@ -209,23 +209,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     setSavingKey(key);
     try {
       if (isAlreadySaved) {
-        // Toggle delete from Anki
-        const res = await api.deleteCard({ card_type: 'sentence', text: cleanSentence });
-        if (res.success) {
-          setSavedKeys((prev) => {
-            const next = new Set(prev);
-            next.delete(key);
-            return next;
-          });
-          setExistingSentences((prev) => {
-            const next = new Set(prev);
-            next.delete(cleanSentence.toLowerCase());
-            return next;
-          });
-          onShowToast('Anki에서 문장 카드가 삭제되었습니다.');
-        } else {
-          onShowToast(`삭제 실패: ${res.error}`);
-        }
+        onShowToast('이미 Anki에 있는 문장입니다.');
       } else {
         // Add to Anki
         const res = await api.addSentenceCard({
@@ -515,10 +499,10 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                       disabled={isCorrSaving}
                       className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-95 border ${
                         isCorrSaved
-                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/40 dark:hover:text-red-300'
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                           : 'bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 border-transparent'
                       }`}
-                      title={isCorrSaved ? '클릭 시 Anki에서 등록 취소(제거)' : 'Anki 문장 카드로 저장'}
+                      title={isCorrSaved ? '이미 Anki에 있음' : 'Anki 문장 카드로 저장'}
                     >
                       {isCorrSaving ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -612,10 +596,10 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                         disabled={isCorrSaving}
                         className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-95 border ${
                           isCorrSaved
-                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/40 dark:hover:text-red-300'
+                            ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                             : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
                         }`}
-                        title={isCorrSaved ? '클릭 시 Anki에서 등록 취소(제거)' : 'Anki 교정본 카드로 저장'}
+                        title={isCorrSaved ? '이미 Anki에 있음' : 'Anki 교정본 카드로 저장'}
                       >
                         {isCorrSaving ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -696,10 +680,10 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                           disabled={isNatSaving}
                           className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-95 border ${
                             isNatSaved
-                              ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:hover:bg-red-950/40 dark:hover:text-red-300'
+                              ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700'
                               : 'bg-blue-600 hover:bg-blue-700 text-white border-transparent'
                           }`}
-                          title={isNatSaved ? '클릭 시 Anki에서 등록 취소(제거)' : 'Anki 원어민 카드로 저장'}
+                          title={isNatSaved ? '이미 Anki에 있음' : 'Anki 원어민 카드로 저장'}
                         >
                           {isNatSaving ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />

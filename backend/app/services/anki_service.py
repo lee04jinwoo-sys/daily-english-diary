@@ -1,4 +1,5 @@
 import requests
+import subprocess
 import io
 import os
 import re
@@ -304,42 +305,13 @@ class AnkiService:
             "existing_words": existing_words
         }
 
-    def delete_card(self, card_type: str, text: str) -> AnkiActionResponse:
-        """Finds and deletes card matching text from Anki."""
-        if not self.check_connection():
-            return AnkiActionResponse(success=False, error="Anki가 실행되어 있지 않습니다. Anki 앱을 켜주세요.")
-
-        clean_text = text.strip()
-        if not clean_text:
-            return AnkiActionResponse(success=False, error="삭제할 텍스트가 비어있습니다.")
-
-        escaped = clean_text.replace('"', '\\"')
-        notes_to_delete = []
-
+    def launch_anki(self) -> bool:
+        """Opens the Anki desktop app (macOS)."""
         try:
-            if card_type == "sentence":
-                res = self.invoke("findNotes", query=f'note:"English Sentence" "문장:{escaped}"')
-                if res:
-                    notes_to_delete.extend(res)
-            elif card_type == "vocab":
-                from app.services.gemini_service import normalize_vocab_placeholders
-                norm_w = normalize_vocab_placeholders(clean_text)
-                escaped_norm = norm_w.replace('"', '\\"')
-                res = self.invoke("findNotes", query=f'note:"English Vocabulary" "단어:{escaped_norm}"')
-                if res:
-                    notes_to_delete.extend(res)
-                if norm_w != clean_text:
-                    res2 = self.invoke("findNotes", query=f'note:"English Vocabulary" "단어:{escaped}"')
-                    if res2:
-                        notes_to_delete.extend(res2)
-
-            notes_to_delete = list(set(notes_to_delete))
-            if not notes_to_delete:
-                return AnkiActionResponse(success=True, message="Anki에서 해당 카드를 찾을 수 없습니다.")
-
-            self.invoke("deleteNotes", notes=notes_to_delete)
-            return AnkiActionResponse(success=True, message="Anki에서 카드가 삭제되었습니다.")
+            result = subprocess.run(["open", "-a", "Anki"], capture_output=True, timeout=10)
+            return result.returncode == 0
         except Exception as e:
-            return AnkiActionResponse(success=False, error=f"Anki 카드 삭제 실패: {str(e)}")
+            logger.warning(f"Failed to launch Anki: {e}")
+            return False
 
 anki_service = AnkiService()

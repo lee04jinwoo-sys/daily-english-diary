@@ -110,12 +110,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  deleteCard: (data: { card_type: 'sentence' | 'vocab'; text: string }) =>
-    fetchJson<AnkiActionResponse>('/anki/delete-card', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-
   toggleDiaryComplete: (date: string) =>
     fetchJson<Diary>(`/diaries/${date}/toggle-complete`, {
       method: 'PATCH',

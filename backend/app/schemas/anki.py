@@ -58,7 +58,3 @@ class CheckExistingCardsRequest(BaseModel):
 class CheckExistingCardsResponse(BaseModel):
     existing_sentences: List[str] = Field(default_factory=list)
     existing_words: List[str] = Field(default_factory=list)
-
-class DeleteCardRequest(BaseModel):
-    card_type: Literal['sentence', 'vocab'] = Field(..., description="Type of card: sentence or vocab")
-    text: str = Field(..., description="Sentence text or vocab word to delete")

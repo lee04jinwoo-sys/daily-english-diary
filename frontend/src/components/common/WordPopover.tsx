@@ -107,20 +107,13 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Direct 1-Click Vocab Anki Save & Toggle Deletion
+  // Direct 1-Click Vocab Anki Save (no deletion: existing Anki cards are never removed from here)
   const handleDirectSaveVocab = async () => {
     if (!data) return;
     setIsSavingAnki(true);
     try {
       if (isSaved) {
-        // Toggle delete from Anki
-        const res = await api.deleteCard({ card_type: 'vocab', text: data.word });
-        if (res.success) {
-          setIsSaved(false);
-          onShowToast(`"${data.word}" 카드가 Anki에서 삭제되었습니다.`);
-        } else {
-          onShowToast(`삭제 실패: ${res.error}`);
-        }
+        onShowToast(`"${data.word}"은(는) 이미 Anki에 있습니다.`);
       } else {
         const res = await api.addVocabCard({
           word: data.word,
