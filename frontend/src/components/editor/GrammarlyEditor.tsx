@@ -497,7 +497,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             {/* AI Review Summary / Feedback & Key Expressions */}
             {reviewResult && (
               <div className="space-y-4 pt-2">
-                <EssayFeedback review={reviewResult} onRevise={onRevise} />
+                <EssayFeedback review={reviewResult} onRevise={onRevise} onOpenAnkiModal={onOpenAnkiModal} />
 
                 {/* Key Expressions Extracted */}
                 {reviewResult.key_expressions && reviewResult.key_expressions.length > 0 && (

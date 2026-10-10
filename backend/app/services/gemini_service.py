@@ -8,7 +8,7 @@ from google.genai import types
 from app.core.config import settings
 from app.schemas.review import (
     ReviewResponse, SuggestionItem, KeyExpression, SentencePair, VocabItem,
-    EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment,
+    EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment, RecurringPattern,
 )
 from app.schemas.anki import CardPreviewResponse, CardType
 
@@ -64,6 +64,54 @@ ESSAY_TYPE_GUIDE = {
 
 
 MAX_SUGGESTION_WORDS = 12
+
+
+_CONTRACTIONS = [
+    (r"\bwon't\b", "will not"), (r"\bcan't\b", "cannot"), (r"\bcan not\b", "cannot"), (r"\bshan't\b", "shall not"),
+    (r"n't\b", " not"), (r"'re\b", " are"), (r"'m\b", " am"), (r"'ve\b", " have"), (r"'ll\b", " will"),
+]
+
+
+def _expand(text: str, s_form: str, d_form: str) -> str:
+    t = text.lower().replace("\u2019", "'")
+    for pat, repl in _CONTRACTIONS:
+        t = re.sub(pat, repl, t)
+    t = re.sub(r"'s\b", " " + s_form, t)
+    t = re.sub(r"'d\b", " " + d_form, t)
+    return " ".join(t.split())
+
+
+def is_contraction_only(original: str, suggested: str) -> bool:
+    """True when the suggestion merely expands (or creates) contractions."""
+    if not original or not suggested or original.strip() == suggested.strip():
+        return False
+    for s_form in ("is", "has"):
+        for d_form in ("would", "had"):
+            if _expand(original, s_form, d_form) == _expand(suggested, s_form, d_form):
+                return True
+    return False
+
+
+def parse_patterns(raw) -> list[RecurringPattern]:
+    out: list[RecurringPattern] = []
+    for p in raw or []:
+        if not isinstance(p, dict) or not str(p.get("pattern", "")).strip():
+            continue
+        examples = p.get("examples") or []
+        if isinstance(examples, str):
+            examples = [examples]
+        try:
+            count = int(p.get("count", len(examples)))
+        except (TypeError, ValueError):
+            count = len(examples)
+        out.append(RecurringPattern(
+            pattern=str(p["pattern"]).strip(),
+            count=max(count, 1),
+            examples=[str(x) for x in examples if str(x).strip()],
+            fix=str(p.get("fix", "")),
+            tip=str(p.get("tip", "")),
+        ))
+    return out[:4]
 
 
 def round_band(value) -> float:
@@ -164,6 +212,8 @@ class GeminiService:
         prompt = f"""
 당신은 IELTS Writing Task 2 채점 경험이 많은 영어 작문 코치이자 Anki 어휘 제작 전문가입니다.
 학습자는 토플 100점 수준(B2~C1)의 한국인입니다. 칭찬보다 다음 단계로 올라가기 위한 구체적이고 냉정한 피드백을 주세요.
+이 연습의 목적은 형식을 갖춘 글쓰기 실력이 아니라 **영어 출력**, 즉 자기 생각을 영어로 정확하고 자연스럽게 꺼내는 능력입니다.
+서론·결론의 유무, 문단 형식, 분량은 감점하지 않습니다. 피드백의 중심은 언어(어휘 선택, 문법, 한국어 직역 습관)입니다.
 
 [에세이 문제]: {prompt_text}
 [에세이 유형]: {type_guide}
@@ -172,19 +222,28 @@ class GeminiService:
 
 [채점 원칙]
 1. rubric: IELTS Task 2의 4개 기준으로 각각 0~9 밴드(0.5 단위)와 한국어 한 줄 코멘트를 줍니다.
-   - task_response: 문제에 정확히 답했는가, 입장이 분명하고 끝까지 일관되는가, 근거가 충분히 전개되었는가
-   - coherence: 문단 구성, 논리 흐름, 연결어의 자연스러운 사용(남용 포함)
+   - task_response: 질문에 답했는가, 하고 싶은 말(입장과 근거)이 분명히 전달되는가
+   - coherence: 문장과 아이디어가 자연스럽게 이어지는가, 연결어 사용(남용 포함). 형식적인 문단 구성은 보지 않습니다.
    - lexical: 어휘의 정확성·폭·콜로케이션
    - grammar: 문법 정확성과 복문·양보·가정 등 구조의 다양성
    - overall_band: 4개 평균을 0.5 단위로 반올림
-   - 분량이 짧으면 task_response를 그에 맞게 낮게 주되, 분량 자체를 나무라지는 마세요(분량은 학습자 자유).
-2. argument: 논증 수준의 피드백(한국어).
+   - 형식(서론·결론, 문단 수)과 분량으로는 감점하지 않고, 코멘트에서도 형식을 지적하지 마세요.
+2. argument: 내용 수준의 피드백(한국어, 간결하게).
    - thesis: 입장이 얼마나 분명하고 논쟁 가능한가
    - strongest_point: 가장 설득력 있는 부분
-   - weakest_point: 가장 약한 논거와 구체적인 보강 방법
+   - weakest_point: 가장 약한 논거와 구체적인 보강 방법. 학습자가 든 예시나 근거가 오히려 자기 주장과 모순되면
+     (예: '아무도 사생활 공개를 요구하지 않는 직업' 목록에 정치인을 넣음) 반드시 이것부터 지적하세요.
    - missing_counterargument: 다뤘어야 할 반론과 그에 대한 재반박 방향(이미 잘 다뤘다면 그렇다고 쓰기)
    - paragraph_comments: 문단 번호(1부터)별 한 줄 코멘트
 3. revision_focus: 고쳐 쓸 때 집중할 2~3가지(한국어, 각 한 문장, 실행 가능한 지시).
+   형식이 아니라 표현에 관한 것이어야 합니다(반복 오류 패턴, 더 정확한 단어, 하려던 말을 더 정확히 하는 법).
+3-1. recurring_patterns: 같은 종류의 오류나 한국어 직역 습관이 2번 이상 나오면 하나로 묶습니다(최대 4개, 많은 순).
+   - pattern: 패턴 이름(한국어, 예: "privacy를 '사생활 내용'의 뜻으로 사용", "가산명사 단수에 관사 누락")
+   - count: 이 글에서 실제로 나온 횟수
+   - examples: 원문에 그대로 있는 해당 구문들
+   - fix: 올바른 형태(영어)
+   - tip: 다음에 기억할 한 문장(한국어)
+   - 반복되지 않은 한 번짜리 오류는 넣지 마세요. 없으면 빈 배열.
 4. corrected_text: 학습자의 구조와 논지를 그대로 두고 문법·철자·명백한 오류만 고친 전문.
 5. upgraded_text: 같은 입장·같은 논거로 C1+ 필자가 썼을 법한 버전. 문단 구조는 유지하되 논리 연결, 정확한 어휘,
    양보/반박 구조를 보강합니다. 기준 문체는 좋은 신문 칼럼(예: The Economist)처럼 정확하고 담백한 논증문입니다.
@@ -193,7 +252,10 @@ class GeminiService:
 6. suggestions (인라인 교정, tier 필수):
    - "accuracy": 틀린 문법/철자/관사/수일치/시제 등 명백한 오류만
    - "idiom": 문법은 맞지만 어색한 직역투, 부정확한 단어 선택, 더 정확한 콜로케이션
-   - "style": 논증문에 더 맞는 표현, 연결어 다양화, 격식 조정(선택 사항)
+   - "style": 더 정확하거나 자연스러운 표현, 연결어 다양화(선택 사항)
+   - 축약형(doesn't, it's 등)을 풀어 쓰라는 제안과 단순 격식 조정은 하지 마세요. 출력 연습에서 축약형은 오류가 아닙니다.
+   - 같은 오류가 여러 번 나오면 나올 때마다 각각 suggestion을 만드세요.
+   - suggested_phrase 자체에 원래와 같은 오류가 남아 있으면 안 됩니다(예: 'reveal their privacy'를 그대로 두는 제안 금지).
    - 모든 tier 공통: original_phrase는 원문에 그대로 있는 2~7단어 구문만. 문장 전체를 바꾸는 제안은 금지합니다.
      문장 단위 재구성은 upgraded_text와 sentence_pairs의 native에서만 보여주세요.
    - suggested_phrase는 학습자의 단어를 최대한 살린 최소 수정이어야 합니다
@@ -223,6 +285,7 @@ class GeminiService:
     "paragraph_comments": [{{"paragraph": 1, "comment": "..."}}]
   }},
   "revision_focus": ["...", "..."],
+  "recurring_patterns": [{{"pattern": "...", "count": 3, "examples": ["...", "..."], "fix": "...", "tip": "..."}}],
   "suggestions": [{{"original_phrase": "...", "suggested_phrase": "...", "tier": "accuracy", "category": "Grammar", "subcategory": "관사(Article)", "explanation": "..."}}],
   "sentence_pairs": [{{"original": "...", "corrected": "...", "native": "...", "translation": "...", "explanation": "...", "vocab": [{{"word": "...", "meaning": "...", "pos": "v"}}]}}],
   "key_expressions": [{{"expression": "...", "meaning": "...", "pos": "idiom", "synonyms": "...", "example": "...", "explanation": "..."}}]
@@ -239,6 +302,10 @@ class GeminiService:
                 orig = item.get("original_phrase", "").strip()
                 # Inline suggestions are phrase-level fixes; sentence rewrites belong in upgraded_text.
                 if not orig or len(orig.split()) > MAX_SUGGESTION_WORDS:
+                    continue
+                suggested = item.get("suggested_phrase", "").strip()
+                # No-op edits and contraction expansions are not corrections in output practice.
+                if suggested == orig or is_contraction_only(orig, suggested):
                     continue
                 start_idx, end_idx = self._find_exact_offsets(content, orig, matched_spans)
                 if start_idx != -1:
@@ -323,6 +390,7 @@ class GeminiService:
                 rubric=parse_rubric(data.get("rubric") or {}),
                 argument=parse_argument(data.get("argument") or {}),
                 revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
+                recurring_patterns=parse_patterns(data.get("recurring_patterns")),
                 suggestions=processed_suggestions,
                 sentence_pairs=sentence_pairs,
                 key_expressions=key_exprs

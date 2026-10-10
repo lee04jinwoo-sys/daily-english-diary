@@ -91,6 +91,14 @@ export interface ArgumentFeedback {
   paragraph_comments: Array<{ paragraph: number; comment: string }>;
 }
 
+export interface RecurringPattern {
+  pattern: string;
+  count: number;
+  examples: string[];
+  fix: string;
+  tip: string;
+}
+
 export interface ReviewResponse {
   essay_id: string;
   original_text: string;
@@ -100,6 +108,7 @@ export interface ReviewResponse {
   rubric: EssayRubric;
   argument: ArgumentFeedback;
   revision_focus: string[];
+  recurring_patterns?: RecurringPattern[];
   suggestions: SuggestionItem[];
   sentence_pairs?: SentencePair[];
   key_expressions: KeyExpression[];

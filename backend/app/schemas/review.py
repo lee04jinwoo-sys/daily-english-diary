@@ -77,6 +77,14 @@ class ArgumentFeedback(BaseModel):
     paragraph_comments: List[ParagraphComment] = Field(default_factory=list)
 
 
+class RecurringPattern(BaseModel):
+    pattern: str = Field(..., description="Name of the repeated error / L1-transfer habit (Korean)")
+    count: int = Field(..., description="How many times it appears in this essay")
+    examples: List[str] = Field(default_factory=list, description="Phrases from the essay")
+    fix: str = ""
+    tip: str = Field(default="", description="One-line Korean tip")
+
+
 class ReviewResponse(BaseModel):
     essay_id: str
     original_text: str
@@ -86,6 +94,7 @@ class ReviewResponse(BaseModel):
     rubric: EssayRubric
     argument: ArgumentFeedback
     revision_focus: List[str] = Field(default_factory=list, description="2-3 things to fix when rewriting")
+    recurring_patterns: List[RecurringPattern] = Field(default_factory=list)
     suggestions: List[SuggestionItem] = Field(default_factory=list)
     sentence_pairs: List[SentencePair] = Field(default_factory=list)
     key_expressions: List[KeyExpression] = Field(default_factory=list)
