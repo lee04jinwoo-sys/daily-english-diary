@@ -1,6 +1,6 @@
 import React from 'react';
 import { Flame, BookOpen, PenTool, ShieldCheck, Sparkles } from 'lucide-react';
-import { StatsResponse } from '../../types/diary';
+import { StatsResponse } from '../../types/essay';
 
 interface StreakWidgetProps {
   stats: StatsResponse | null;
@@ -53,7 +53,7 @@ export const StreakWidget: React.FC<StreakWidgetProps> = ({ stats }) => {
       {/* 3. Native Conformance Index (NCI %) */}
       <div className="bg-white dark:bg-[#202020] border border-emerald-200/70 dark:border-emerald-900/40 rounded-2xl p-4 shadow-xs flex flex-col justify-between transition-colors">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">원어민 일치율 (NCI)</span>
+          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">교정 없이 유지된 비율 (NCI)</span>
           <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
             <Sparkles className="w-4 h-4" />
           </div>
@@ -80,7 +80,7 @@ export const StreakWidget: React.FC<StreakWidgetProps> = ({ stats }) => {
             <span className="text-2xl font-extrabold text-stone-900 dark:text-white font-serif">{totalWords.toLocaleString()}</span>
             <span className="text-xs text-stone-500 dark:text-stone-400">단어</span>
           </div>
-          <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5">총 {stats?.total_diaries ?? 0}편의 일기</p>
+          <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5">총 {stats?.total_essays ?? 0}편의 에세이</p>
         </div>
       </div>
 

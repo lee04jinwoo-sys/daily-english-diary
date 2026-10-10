@@ -1,5 +1,5 @@
 import React from 'react';
-import { SuggestionItem, CardType } from '../../types/diary';
+import { SuggestionItem, CardType } from '../../types/essay';
 import { Check, X, BookmarkPlus, CheckCircle2 } from 'lucide-react';
 
 interface SuggestionCardProps {

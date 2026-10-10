@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AnkiStatus } from '../../types/diary';
+import { AnkiStatus } from '../../types/essay';
 import { api } from '../../api/client';
 import { 
   Calendar as CalendarIcon, 
@@ -14,15 +14,15 @@ import {
   Moon
 } from 'lucide-react';
 
+export type AppView = 'topic' | 'editor' | 'calendar' | 'stats';
+
 interface HeaderProps {
-  currentDate: string;
-  onDateChange: (date: string) => void;
   ankiStatus: AnkiStatus | null;
   onRefreshAnki: () => void;
   isSaving: boolean;
-  onNewDiary: () => void;
-  activeView: 'editor' | 'calendar' | 'stats';
-  onViewChange: (view: 'editor' | 'calendar' | 'stats') => void;
+  onNewEssay: () => void;
+  activeView: AppView;
+  onViewChange: (view: AppView) => void;
   streak: number;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -31,12 +31,10 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  currentDate,
-  onDateChange,
   ankiStatus,
   onRefreshAnki,
   isSaving,
-  onNewDiary,
+  onNewEssay,
   activeView,
   onViewChange,
   streak,
@@ -67,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center space-x-2 cursor-pointer shrink-0" onClick={() => onViewChange('editor')}>
           <span className="text-xl">✍️</span>
           <span className="font-serif font-semibold text-lg text-[#37352f] dark:text-[#f0f0f0] tracking-tight">
-            Daily English Diary
+            Daily English Essay
           </span>
         </div>
 
@@ -76,13 +74,13 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => onViewChange('editor')}
             className={`flex items-center space-x-1 px-3 py-1.5 rounded-md transition-all ${
-              activeView === 'editor'
+              activeView === 'editor' || activeView === 'topic'
                 ? 'bg-white dark:bg-[#383838] text-[#37352f] dark:text-white shadow-xs font-semibold'
                 : 'hover:text-[#37352f] dark:hover:text-white'
             }`}
           >
             <BookOpen className="w-3.5 h-3.5" />
-            <span>일기 에디터</span>
+            <span>에세이</span>
           </button>
           <button
             onClick={() => onViewChange('calendar')}
@@ -109,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Streak, Date, Auto-save, Anki, Dark Mode Toggle, New Diary */}
+      {/* Right: Streak, Auto-save, Anki, Dark Mode Toggle, New Essay */}
       <div className="flex items-center space-x-2.5 sm:space-x-3.5 shrink-0">
         {/* Streak Counter */}
         <div 
@@ -119,17 +117,6 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
           <span>{streak}일 연속</span>
-        </div>
-
-        {/* Date Picker */}
-        <div className="flex items-center space-x-1.5 text-xs text-[#55534e] dark:text-[#b0b0b0] bg-white dark:bg-[#252525] border border-[#e2e1db] dark:border-[#383838] px-2.5 py-1 rounded-md shadow-xs">
-          <CalendarIcon className="w-3.5 h-3.5 text-[#787774] dark:text-[#888888]" />
-          <input
-            type="date"
-            value={currentDate}
-            onChange={(e) => onDateChange(e.target.value)}
-            className="bg-transparent outline-none text-xs text-[#37352f] dark:text-[#e0e0e0] font-medium cursor-pointer"
-          />
         </div>
 
         {/* Auto-save status */}
@@ -147,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Diary Completion Toggle */}
+        {/* Essay Completion Toggle */}
         {onToggleComplete && (
           <button
             onClick={onToggleComplete}
@@ -156,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                 : 'bg-white dark:bg-[#252525] text-stone-600 dark:text-stone-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:border-emerald-300 dark:hover:border-emerald-700 border-stone-200 dark:border-stone-700'
             }`}
-            title={isCompleted ? '학습 완료 해제' : '오늘의 일기 학습 완료로 표시'}
+            title={isCompleted ? '학습 완료 해제' : '이 에세이 학습 완료로 표시'}
           >
             <CheckCircle2 className={`w-3.5 h-3.5 ${isCompleted ? 'text-emerald-600 dark:text-emerald-400' : 'text-stone-400 dark:text-stone-500'}`} />
             <span>{isCompleted ? '학습 완료됨 ✓' : '학습 완료'}</span>
@@ -201,13 +188,13 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* New Diary Button */}
+        {/* New Essay Button */}
         <button
-          onClick={onNewDiary}
+          onClick={onNewEssay}
           className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#2c2b28] hover:bg-[#1c1b18] dark:bg-[#e6e6e6] dark:hover:bg-white dark:text-[#191919] text-white text-xs font-medium rounded-lg shadow-xs transition-all active:scale-95"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>오늘 일기</span>
+          <span>새 에세이</span>
         </button>
       </div>
     </header>

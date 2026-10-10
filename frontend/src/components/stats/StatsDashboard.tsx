@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { StatsResponse, CardType } from '../../types/diary';
+import { StatsResponse, CardType } from '../../types/essay';
 import { StreakWidget } from '../calendar/StreakWidget';
 import { CoreMetricsChart } from './CoreMetricsChart';
 import { VolumeChart } from './VolumeChart';
 import { ErrorCategoryChart } from './ErrorCategoryChart';
 import { ActivityHeatmap } from './ActivityHeatmap';
+import { BandTrendChart } from './BandTrendChart';
 import { 
   BarChart2, 
   AlertTriangle, 
@@ -50,7 +51,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
             <span>학습 분석 & 객관적 성장 지표</span>
           </h1>
           <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
-            원어민 문장 일치율(NCI)과 오류 밀도, 그리고 작성 볼륨(단어·문장 수)을 추적합니다.
+            에세이별 Band 추이, 100단어당 교정 밀도, 작성 볼륨을 추적합니다.
           </p>
         </div>
 
@@ -93,9 +94,15 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
       {/* 2. Top Metric Cards */}
       <StreakWidget stats={stats} />
 
+      <BandTrendChart
+        data={(stats?.band_trends || []).filter((b) => period === 'all' || filteredTrends.some((t) => t.date === b.date))}
+        typeBands={stats?.type_bands || {}}
+        avgBand={stats?.avg_band ?? null}
+      />
+
       {/* 3. 2대 통합 꺾은선 차트 그리드 */}
       <div className="grid grid-cols-1 gap-6">
-        {/* 원어민 일치율 & 오류 밀도 통합 차트 (듀얼 Y축) */}
+        {/* 교정 없이 유지된 비율 & 오류 밀도 통합 차트 (듀얼 Y축) */}
         <CoreMetricsChart data={filteredTrends} />
 
         {/* 단어 수 & 문장 수 작성 볼륨 통합 차트 (듀얼 Y축) */}

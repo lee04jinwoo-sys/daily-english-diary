@@ -1,6 +1,9 @@
 import {
-  Diary,
-  DiaryListResponse,
+  Essay,
+  EssayListResponse,
+  EssayType,
+  EssayCategory,
+  Topic,
   ReviewResponse,
   SuggestionItem,
   AnkiStatus,
@@ -8,7 +11,7 @@ import {
   CardPreviewRequest,
   CardPreviewResponse,
   StatsResponse
-} from '../types/diary';
+} from '../types/essay';
 
 const API_BASE = '/api';
 
@@ -36,23 +39,34 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  // Diaries
-  getDiaries: () => fetchJson<DiaryListResponse>('/diaries'),
-  getDiary: (date: string) => fetchJson<Diary>(`/diaries/${date}`),
-  saveDiary: (data: Partial<Diary> & { date: string; content: string }) =>
-    fetchJson<Diary>('/diaries', {
+  // Essays
+  getEssays: () => fetchJson<EssayListResponse>('/essays'),
+  getEssay: (id: string) => fetchJson<Essay>(`/essays/${id}`),
+  createEssay: (data: { prompt: string; essay_type: EssayType; category?: EssayCategory; topic_id?: string | null }) =>
+    fetchJson<Essay>('/essays', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  deleteDiary: (date: string) =>
-    fetchJson<{ success: boolean; message: string }>(`/diaries/${date}`, {
-      method: 'DELETE',
+  updateEssay: (id: string, data: { content?: string; prompt?: string }) =>
+    fetchJson<Essay>(`/essays/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
-  getDiarySuggestions: (date: string) =>
-    fetchJson<SuggestionItem[]>(`/diaries/${date}/suggestions`),
+  reviseEssay: (id: string) =>
+    fetchJson<Essay>(`/essays/${id}/revise`, { method: 'POST' }),
+  deleteEssay: (id: string) =>
+    fetchJson<{ success: boolean }>(`/essays/${id}`, { method: 'DELETE' }),
+  toggleEssayComplete: (id: string) =>
+    fetchJson<Essay>(`/essays/${id}/toggle-complete`, { method: 'PATCH' }),
+  getEssaySuggestions: (id: string) =>
+    fetchJson<SuggestionItem[]>(`/essays/${id}/suggestions`),
+
+  // Topics
+  suggestTopic: (exclude: string[] = []) =>
+    fetchJson<Topic>(`/topics/suggest${exclude.length ? `?exclude=${encodeURIComponent(exclude.join(','))}` : ''}`),
 
   // Review
-  reviewDiary: (data: { date: string; title?: string; content: string }) =>
+  reviewEssay: (data: { essay_id: string; content: string }) =>
     fetchJson<ReviewResponse>('/review', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -89,7 +103,6 @@ export const api = {
     translation?: string;
     deck_name?: string;
     model_name?: string;
-    diary_date?: string;
   }) =>
     fetchJson<AnkiActionResponse>('/anki/add-sentence', {
       method: 'POST',
@@ -104,17 +117,11 @@ export const api = {
     explanation?: string;
     deck_name?: string;
     model_name?: string;
-    diary_date?: string;
   }) =>
     fetchJson<AnkiActionResponse>('/anki/add-vocab', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  toggleDiaryComplete: (date: string) =>
-    fetchJson<Diary>(`/diaries/${date}/toggle-complete`, {
-      method: 'PATCH',
-    }),
-
   // Stats
   getStats: () => fetchJson<StatsResponse>('/stats'),
 

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { DailyActivity } from '../../types/diary';
+import { DailyActivity } from '../../types/essay';
 import { Calendar } from 'lucide-react';
 
 interface ActivityHeatmapProps {
@@ -54,7 +54,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
   }, [dailyActivity]);
 
   const getColorClass = (act?: DailyActivity) => {
-    if (!act || !act.has_diary || act.word_count === 0) {
+    if (!act || act.word_count === 0) {
       return 'bg-stone-100 dark:bg-[#262626] border-stone-200/50 dark:border-[#303030]';
     }
     const w = act.word_count;
@@ -76,10 +76,10 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
         <div className="space-y-0.5">
           <h3 className="font-serif font-bold text-base text-stone-900 dark:text-[#f0f0f0] flex items-center space-x-2">
             <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <span>일기 작성 잔디 히트맵 (Consistency Heatmap)</span>
+            <span>에세이 작성 잔디 히트맵 (Consistency Heatmap)</span>
           </h3>
           <p className="text-xs text-stone-500 dark:text-stone-400">
-            최근 16주간의 꾸준한 일기 작성 기록입니다. 색이 짙을수록 더 많은 영어 단어를 작성했습니다.
+            최근 16주간의 에세이 작성 기록입니다. 색이 짙을수록 더 많은 영어 단어를 작성했습니다.
           </p>
         </div>
       </div>
@@ -117,9 +117,9 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
                 <div key={cIdx} className="flex flex-col space-y-1">
                   {col.map((day) => {
                     const act = day.activity;
-                    const tooltipText = act?.has_diary
-                      ? `${day.dateStr}: ${act.word_count}단어 (정확도 ${act.score}점)`
-                      : `${day.dateStr}: 일기 없음`;
+                    const tooltipText = act && act.word_count > 0
+                      ? `${day.dateStr}: ${act.essay_count}편, ${act.word_count}단어${act.best_band != null ? ` (최고 Band ${act.best_band.toFixed(1)})` : ''}`
+                      : `${day.dateStr}: 에세이 없음`;
 
                     return (
                       <div

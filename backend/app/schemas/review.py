@@ -47,26 +47,45 @@ class SuggestionItem(BaseModel):
     is_applied: bool = Field(default=False, description="Whether this suggestion has been applied")
 
 class ReviewRequest(BaseModel):
-    date: str = Field(..., description="Diary date YYYY-MM-DD")
-    title: Optional[str] = Field(default="", description="Diary title")
-    content: str = Field(..., min_length=5, description="Diary content to be reviewed")
+    essay_id: str = Field(..., description="Essay being reviewed")
+    content: str = Field(..., min_length=5, description="Essay text to be reviewed")
 
-class RubricScores(BaseModel):
-    grammar: str = Field(default="A", description="Grammar accuracy grade: A, B, C, D, E")
-    vocabulary: str = Field(default="A", description="Vocabulary variety grade: A, B, C, D, E")
-    naturalness: str = Field(default="A", description="Natural expression & idiom grade: A, B, C, D, E")
-    clarity: str = Field(default="A", description="Sentence complexity & clarity grade: A, B, C, D, E")
-    overall_grade: str = Field(default="A", description="Overall composite grade: A+, A, B, C, D, E")
+
+class CriterionScore(BaseModel):
+    band: float = Field(..., description="IELTS-style band 0-9 in 0.5 steps")
+    comment: str = Field(default="", description="One-line Korean comment")
+
+
+class EssayRubric(BaseModel):
+    task_response: CriterionScore
+    coherence: CriterionScore
+    lexical: CriterionScore
+    grammar: CriterionScore
+    overall_band: float
+
+
+class ParagraphComment(BaseModel):
+    paragraph: int
+    comment: str
+
+
+class ArgumentFeedback(BaseModel):
+    thesis: str = Field(default="", description="How clear and arguable the position is")
+    strongest_point: str = ""
+    weakest_point: str = Field(default="", description="Weakest argument and how to strengthen it")
+    missing_counterargument: str = Field(default="", description="Counterargument the essay should address")
+    paragraph_comments: List[ParagraphComment] = Field(default_factory=list)
+
 
 class ReviewResponse(BaseModel):
-    date: str
+    essay_id: str
     original_text: str
-    corrected_text: str = Field(..., description="Full text with all grammatical and spelling corrections applied")
-    native_text: str = Field(..., description="Polished, natural native-like paraphrased full version")
-    overall_feedback: str = Field(..., description="Encouraging feedback and warm commentary on diary contents in Korean")
-    followup_question: str = Field(..., description="A friendly follow-up question in English related to what happened today")
-    score: int = Field(default=100, description="Overall grammar accuracy and naturalness score (0-100)")
-    rubric: Optional[RubricScores] = Field(default=None, description="4-pillar rubric evaluation grades")
-    suggestions: List[SuggestionItem] = Field(default_factory=list, description="List of granular inline suggestions")
-    sentence_pairs: List[SentencePair] = Field(default_factory=list, description="Sentence-by-sentence comparison pairs")
-    key_expressions: List[KeyExpression] = Field(default_factory=list, description="Useful expressions/vocab extracted for learning")
+    corrected_text: str = Field(..., description="Minimal grammar/spelling fixes, user's structure kept")
+    upgraded_text: str = Field(..., description="Same argument rewritten at C1+ level")
+    overall_feedback: str
+    rubric: EssayRubric
+    argument: ArgumentFeedback
+    revision_focus: List[str] = Field(default_factory=list, description="2-3 things to fix when rewriting")
+    suggestions: List[SuggestionItem] = Field(default_factory=list)
+    sentence_pairs: List[SentencePair] = Field(default_factory=list)
+    key_expressions: List[KeyExpression] = Field(default_factory=list)

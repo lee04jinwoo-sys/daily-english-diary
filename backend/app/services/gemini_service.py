@@ -6,7 +6,10 @@ from typing import Optional, List
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.schemas.review import ReviewResponse, SuggestionItem, KeyExpression, SentencePair, VocabItem
+from app.schemas.review import (
+    ReviewResponse, SuggestionItem, KeyExpression, SentencePair, VocabItem,
+    EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment,
+)
 from app.schemas.anki import CardPreviewResponse, CardType
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,57 @@ def clean_vocab_example(example: str) -> str:
     cleaned = re.sub(r"\s*[-:]\s*[가-힣\s,.~!?]+$", "", cleaned)
     return cleaned.strip()
 
+ESSAY_TYPE_GUIDE = {
+    "agree_disagree": "찬반형 - 분명한 입장, 반대 측 인정 후 반박(양보-반박 구조)이 핵심",
+    "discuss_both": "양쪽 견해 논의형 - 두 견해를 공정하게 설명한 뒤 자신의 결론을 분명히",
+    "adv_disadv": "장단점형 - 장단점을 비교하고 어느 쪽이 더 큰지 판단과 근거 제시",
+    "problem_solution": "원인·해결책형 - 인과관계의 구체성, 해결책의 실행 가능성",
+    "hypothetical": "가정형 - 가정법의 정확한 사용, 결과의 논리적 추론",
+    "free": "자유 주제 - 학습자가 정한 질문에 대한 논증문",
+}
+
+
+MAX_SUGGESTION_WORDS = 12
+
+
+def round_band(value) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return min(9.0, max(0.0, round(v * 2) / 2))
+
+
+def parse_rubric(raw: dict) -> EssayRubric:
+    def crit(key: str) -> CriterionScore:
+        c = raw.get(key) or {}
+        if not isinstance(c, dict):
+            c = {"band": c}
+        return CriterionScore(band=round_band(c.get("band")), comment=str(c.get("comment", "")))
+
+    parts = {k: crit(k) for k in ("task_response", "coherence", "lexical", "grammar")}
+    overall = raw.get("overall_band")
+    if overall is None:
+        overall = sum(p.band for p in parts.values()) / 4
+    return EssayRubric(**parts, overall_band=round_band(overall))
+
+
+def parse_argument(raw: dict) -> ArgumentFeedback:
+    comments = []
+    for c in raw.get("paragraph_comments") or []:
+        try:
+            comments.append(ParagraphComment(paragraph=int(c.get("paragraph", 0)), comment=str(c.get("comment", ""))))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return ArgumentFeedback(
+        thesis=str(raw.get("thesis", "")),
+        strongest_point=str(raw.get("strongest_point", "")),
+        weakest_point=str(raw.get("weakest_point", "")),
+        missing_counterargument=str(raw.get("missing_counterargument", "")),
+        paragraph_comments=comments,
+    )
+
+
 class GeminiError(RuntimeError):
     """Raised when the AI review could not be produced. Never replaced with fake results."""
 
@@ -66,14 +120,14 @@ class GeminiService:
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
         return self._client
 
-    async def _generate_json(self, prompt: str, temperature: float) -> dict:
+    async def _generate_json(self, prompt: str, temperature: float, thinking_budget: int = 0) -> dict:
         response = await self.client.aio.models.generate_content(
             model=settings.GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=temperature,
-                thinking_config=types.ThinkingConfig(thinking_budget=0)
+                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
             )
         )
         return json.loads(response.text or "{}")
@@ -103,102 +157,79 @@ class GeminiService:
 
         return -1, -1
 
-    async def review_diary(self, date: str, content: str, title: str = "") -> ReviewResponse:
-        """
-        Reviews English diary text with Level+1 (i+1) Natural Conversational Polish.
-        Maintains user's natural thought structure by 80%+, avoids flowery/novelistic writing,
-        and provides practical daily collocations and Anki Manager standard vocabulary.
-        """
+    async def review_essay(self, essay_id: str, prompt_text: str, essay_type: str, content: str) -> ReviewResponse:
+        """Reviews an argumentative essay: IELTS-style 4-criterion bands, argument-level feedback,
+        inline fixes, and a C1+ rewrite that keeps the writer's own argument."""
+        type_guide = ESSAY_TYPE_GUIDE.get(essay_type, ESSAY_TYPE_GUIDE["free"])
         prompt = f"""
-당신은 한국인 학습자를 위한 친절하고 실용적인 1:1 원어민 영어 튜터이자 Anki 어휘 제작 전문가입니다.
-사용자가 작성한 아래 영어 일기를 검토하고, **Level + 1 (i + 1)** 기준으로 첨삭해주세요.
+당신은 IELTS Writing Task 2 채점 경험이 많은 영어 작문 코치이자 Anki 어휘 제작 전문가입니다.
+학습자는 토플 100점 수준(B2~C1)의 한국인입니다. 칭찬보다 다음 단계로 올라가기 위한 구체적이고 냉정한 피드백을 주세요.
 
-[일기 제목]: {title}
-[일기 본문]:
+[에세이 문제]: {prompt_text}
+[에세이 유형]: {type_guide}
+[학습자 에세이]:
 \"\"\"{content}\"\"\"
 
-[⭐⭐⭐ 핵심 첨삭 및 어휘 작성 원칙 ⭐⭐⭐]
-1. **과도한 문학적 수식어나 소설 같은 미사여구 절대 금지**:
-   - ❌ 나쁜 예: "What a marathon day it was! My epic journey began with...", "I was enveloped by..." (너무 극적이고 소설 같음)
-   - ⭕ 좋은 예: "It was such a long day. I took a 10-hour flight from Incheon to LA and had a layover at LAX." (원문의 톤을 살린 자연스러운 원어민 일상 대화체)
-2. **사용자의 원래 문장 구조와 생각의 흐름을 80% 이상 유지**:
-   - 이미 문법이 맞고 자연스러운 문장은 억지로 바꾸지 말고 그대로 둡니다.
-   - 사소한 스타일 차이 때문에 문장을 인위적으로 뜯어고치지 마세요.
-3. **첨삭 3-Tier 엄격 분류 (suggestions의 tier 속성 반드시 지정)**:
-   - 🔴 **"accuracy" (필수 교정)**:
-     - 주어-동사 수일치, 시제 불일치, 동사 누락, 명확한 철자 오류 등 '틀린 문법'만 지정합니다.
-     - ⚠️ 금지: 'is not' ➔ 'isn't' 같은 축약형 권장이나 사소한 어조 차이는 절대로 accuracy로 지정하지 마세요!
-   - 🟡 **"idiom" (원어민 표현/콜로케이션)**:
-     - 문법적으로는 통할 수 있으나 원어민이 실제로 쓰지 않는 어색한 직역투/콩글리시, 자연스러운 구동사(Phrasal Verbs) 및 전치사 조합.
-     - 예: 'transit at LA airport' ➔ 'have a layover at LAX', 'after the come and go' ➔ 'after all the back and forth'.
-   - 🔵 **"style" (스타일 팁/선택적 제안)**:
-     - 문법적으로 완벽히 맞지만 구어체 축약형('is not' ➔ 'isn't'), 자연스러운 문맥 흐름('walking them' ➔ 'out walking them') 등 순수한 취향/스타일 팁.
-4. **단문/구문 단위 스팬 엄격 제한 (Atomic Phrase Only)**:
-   - 'original_phrase'는 교정이 필요한 핵심 구문(2~7단어 이내)만 정확히 타겟팅하세요.
-   - 절대로 15~30단어 이상의 긴 복문 전체를 통째로 하나의 suggestion으로 묶지 마세요.
-5. **3단계 문장 대조 (sentence_pairs)**:
-   - 일기를 한 문장씩 나누어 3단계(original, corrected, native) 및 한국어 translation, explanation, vocab을 제공하세요.
-6. **핵심 추천 표현 (key_expressions) - Anki Manager / Shadowing Player 4대 규칙 100% 엄수**:
-   - **단어 표기 표준화**: 숙어/동사구의 대상은 'someone', 'something', 'sb', 'sth' 대신 대문자 'A', 'B', 'C' 및 'V-ing' 기호로 표준화하세요. (예: 'spring A on B', 'prevent A from V-ing')
-   - **품사 (pos)**: "n", "v", "adj", "adv", "idiom", "prep", "conj" 중 하나 (소문자 약어)
-   - **유의어 (synonyms)**: 2~3개의 영단어 유의어 (쉼표 구분)
-   - **예문 (example)**: 해당 표현이 쓰인 100% 순수 영어 문장. (단어에 A, B가 있다면 예문에서는 반드시 실제 자연스러운 구체적 단어로 대체할 것. 괄호나 한국어 해석 절대 금지)
-   - **설명 (explanation)**: Anki Manager 3단계 공식 엄수 (3~4문장):
-     - ① 의미/뉘앙스: "[단어]는 '[뜻]'이라는 의미로, [구체적 쓰임새]를 나타냅니다."
-     - ② 유의어 비교: "[유의어]와 비슷하지만, [단어]는 [차이점]을 강조합니다."
-     - ③ 콜로케이션: "자주 쓰이는 표현으로는 '[영어표현](한글뜻)' 등이 있습니다."
+[채점 원칙]
+1. rubric: IELTS Task 2의 4개 기준으로 각각 0~9 밴드(0.5 단위)와 한국어 한 줄 코멘트를 줍니다.
+   - task_response: 문제에 정확히 답했는가, 입장이 분명하고 끝까지 일관되는가, 근거가 충분히 전개되었는가
+   - coherence: 문단 구성, 논리 흐름, 연결어의 자연스러운 사용(남용 포함)
+   - lexical: 어휘의 정확성·폭·콜로케이션
+   - grammar: 문법 정확성과 복문·양보·가정 등 구조의 다양성
+   - overall_band: 4개 평균을 0.5 단위로 반올림
+   - 분량이 짧으면 task_response를 그에 맞게 낮게 주되, 분량 자체를 나무라지는 마세요(분량은 학습자 자유).
+2. argument: 논증 수준의 피드백(한국어).
+   - thesis: 입장이 얼마나 분명하고 논쟁 가능한가
+   - strongest_point: 가장 설득력 있는 부분
+   - weakest_point: 가장 약한 논거와 구체적인 보강 방법
+   - missing_counterargument: 다뤘어야 할 반론과 그에 대한 재반박 방향(이미 잘 다뤘다면 그렇다고 쓰기)
+   - paragraph_comments: 문단 번호(1부터)별 한 줄 코멘트
+3. revision_focus: 고쳐 쓸 때 집중할 2~3가지(한국어, 각 한 문장, 실행 가능한 지시).
+4. corrected_text: 학습자의 구조와 논지를 그대로 두고 문법·철자·명백한 오류만 고친 전문.
+5. upgraded_text: 같은 입장·같은 논거로 C1+ 필자가 썼을 법한 버전. 문단 구조는 유지하되 논리 연결, 정확한 어휘,
+   양보/반박 구조를 보강합니다. 기준 문체는 좋은 신문 칼럼(예: The Economist)처럼 정확하고 담백한 논증문입니다.
+   - 금지: 미사여구, 과장된 형용사(formidable, exorbitant 등을 습관적으로 쓰기), IELTS 템플릿 상투구
+     (foster an environment conducive to, it is undeniable that, in this day and age, plays a pivotal role 등).
+6. suggestions (인라인 교정, tier 필수):
+   - "accuracy": 틀린 문법/철자/관사/수일치/시제 등 명백한 오류만
+   - "idiom": 문법은 맞지만 어색한 직역투, 부정확한 단어 선택, 더 정확한 콜로케이션
+   - "style": 논증문에 더 맞는 표현, 연결어 다양화, 격식 조정(선택 사항)
+   - 모든 tier 공통: original_phrase는 원문에 그대로 있는 2~7단어 구문만. 문장 전체를 바꾸는 제안은 금지합니다.
+     문장 단위 재구성은 upgraded_text와 sentence_pairs의 native에서만 보여주세요.
+   - suggested_phrase는 학습자의 단어를 최대한 살린 최소 수정이어야 합니다
+     (예: 'make companies to allow' -> 'make companies allow' 또는 'require companies to allow').
+7. sentence_pairs: 문장별 original / corrected / native(= upgraded 버전의 대응 문장) / translation(한국어) / explanation(한국어) / vocab.
+8. key_expressions: upgraded_text에서 학습자가 다음 에세이에 바로 쓸 만한 논증 표현·콜로케이션 4~8개.
+   - 표기 표준화: someone/something/sb/sth 대신 A, B, C 및 V-ing (예: 'attribute A to B')
+   - pos: "n", "v", "adj", "adv", "idiom", "prep", "conj" 중 하나
+   - synonyms: 2~3개 (쉼표 구분)
+   - example: 100% 영어 예문(A, B는 실제 단어로 치환, 괄호·한국어 금지)
+   - explanation: 3단계 공식(3~4문장) ① 의미/뉘앙스 ② 유의어 비교 ③ 콜로케이션 '[영어표현](한글뜻)'
 
-[JSON 응답 규격]:
+[JSON 응답 규격]
 {{
-  "original_text": "{content}",
-  "corrected_text": "원문 구조 유지 + 문법/철자만 완벽히 수정한 전체 일기",
-  "native_text": "Level+1 자연스러운 실전 일상 표현으로 다듬은 전체 일기",
-  "overall_feedback": "일기 내용에 대한 따뜻한 공감과 실전 영어 학습 팁 (한국어 3문장)",
-  "followup_question": "일기 내용과 관련된 흥미로운 영어 질문 1문장",
-  "score": 85,
+  "corrected_text": "...",
+  "upgraded_text": "...",
+  "overall_feedback": "총평 한국어 3문장: 현재 수준, 가장 큰 약점, 다음 한 걸음",
   "rubric": {{
-    "grammar": "A",
-    "vocabulary": "B",
-    "naturalness": "A",
-    "clarity": "A",
-    "overall_grade": "A"
+    "task_response": {{"band": 6.5, "comment": "..."}},
+    "coherence": {{"band": 6.5, "comment": "..."}},
+    "lexical": {{"band": 7.0, "comment": "..."}},
+    "grammar": {{"band": 6.5, "comment": "..."}},
+    "overall_band": 6.5
   }},
-  "suggestions": [
-    {{
-      "original_phrase": "원문에서 틀리거나 어색한 정확한 구문 (2~7단어 이내, 끝 마침표 제외)",
-      "suggested_phrase": "더 자연스러운 표현 (원문에 마침표가 없으면 마침표 붙이지 말 것)",
-      "tier": "accuracy",
-      "category": "Grammar",
-      "subcategory": "전치사(Preposition)",
-      "explanation": "한국어 해설"
-    }}
-  ],
-  "sentence_pairs": [
-    {{
-      "original": "Yesterday I go to airport.",
-      "corrected": "Yesterday I went to the airport.",
-      "native": "Yesterday, I headed to the airport.",
-      "translation": "어제 저는 공항에 갔습니다.",
-      "explanation": "과거 시제이므로 went를 쓰며 the가 필요합니다.",
-      "vocab": [
-        {{"word": "head to", "meaning": "~로 향하다/가다", "pos": "v"}}
-      ]
-    }}
-  ],
-  "key_expressions": [
-    {{
-      "expression": "look forward to V-ing",
-      "meaning": "~하기를 손꼽아 기다리다/기대하다",
-      "pos": "idiom",
-      "synonyms": "anticipate, await, expect",
-      "example": "I'm really looking forward to visiting Toronto this summer.",
-      "explanation": "look forward to V-ing는 '~하기를 기대하다'라는 의미로, 미래의 즐거운 일을 고대할 때 쓰입니다. expect와 비슷하지만, look forward to V-ing는 설레는 감정이 강조됩니다. 자주 쓰이는 표현으로는 'look forward to hearing from you(답장을 기다리겠습니다)' 등이 있습니다."
-    }}
-  ]
+  "argument": {{
+    "thesis": "...", "strongest_point": "...", "weakest_point": "...", "missing_counterargument": "...",
+    "paragraph_comments": [{{"paragraph": 1, "comment": "..."}}]
+  }},
+  "revision_focus": ["...", "..."],
+  "suggestions": [{{"original_phrase": "...", "suggested_phrase": "...", "tier": "accuracy", "category": "Grammar", "subcategory": "관사(Article)", "explanation": "..."}}],
+  "sentence_pairs": [{{"original": "...", "corrected": "...", "native": "...", "translation": "...", "explanation": "...", "vocab": [{{"word": "...", "meaning": "...", "pos": "v"}}]}}],
+  "key_expressions": [{{"expression": "...", "meaning": "...", "pos": "idiom", "synonyms": "...", "example": "...", "explanation": "..."}}]
 }}
 """
         try:
-            data = await self._generate_json(prompt, 0.3)
+            data = await self._generate_json(prompt, 0.3, thinking_budget=1024)
 
             # Process suggestions
             processed_suggestions: List[SuggestionItem] = []
@@ -206,7 +237,8 @@ class GeminiService:
 
             for item in data.get("suggestions", []):
                 orig = item.get("original_phrase", "").strip()
-                if not orig:
+                # Inline suggestions are phrase-level fixes; sentence rewrites belong in upgraded_text.
+                if not orig or len(orig.split()) > MAX_SUGGESTION_WORDS:
                     continue
                 start_idx, end_idx = self._find_exact_offsets(content, orig, matched_spans)
                 if start_idx != -1:
@@ -282,27 +314,15 @@ class GeminiService:
                 if k.get("expression")
             ]
 
-            rubric_data = data.get("rubric")
-            rubric_obj = None
-            if rubric_data and isinstance(rubric_data, dict):
-                from app.schemas.review import RubricScores
-                rubric_obj = RubricScores(
-                    grammar=str(rubric_data.get("grammar", "A")),
-                    vocabulary=str(rubric_data.get("vocabulary", "B")),
-                    naturalness=str(rubric_data.get("naturalness", "A")),
-                    clarity=str(rubric_data.get("clarity", "A")),
-                    overall_grade=str(rubric_data.get("overall_grade", "A"))
-                )
-
             return ReviewResponse(
-                date=date,
+                essay_id=essay_id,
                 original_text=content,
-                corrected_text=data.get("corrected_text", content),
-                native_text=data.get("native_text", content),
-                overall_feedback=data.get("overall_feedback", "오늘도 멋지게 영어 일기를 작성하셨네요! 꾸준함이 실력 향상의 지름길입니다."),
-                followup_question=data.get("followup_question", "What was the most memorable moment of your day?"),
-                score=int(data.get("score", 90)),
-                rubric=rubric_obj,
+                corrected_text=data.get("corrected_text") or content,
+                upgraded_text=data.get("upgraded_text") or data.get("corrected_text") or content,
+                overall_feedback=data.get("overall_feedback", ""),
+                rubric=parse_rubric(data.get("rubric") or {}),
+                argument=parse_argument(data.get("argument") or {}),
+                revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
                 suggestions=processed_suggestions,
                 sentence_pairs=sentence_pairs,
                 key_expressions=key_exprs

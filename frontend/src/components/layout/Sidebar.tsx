@@ -1,38 +1,38 @@
 import React, { useState } from 'react';
-import { DiaryListItem } from '../../types/diary';
-import { 
-  Search, 
-  Trash2, 
-  Calendar,
+import { EssayListItem, ESSAY_TYPE_LABELS } from '../../types/essay';
+import {
+  Search,
+  Trash2,
   CheckCircle2,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
 
 interface SidebarProps {
-  diaries: DiaryListItem[];
-  currentDate: string;
-  onSelectDate: (date: string) => void;
-  onDeleteDiary: (date: string) => void;
-  onToggleComplete?: (date: string) => void;
+  essays: EssayListItem[];
+  currentEssayId: string | null;
+  onSelectEssay: (id: string) => void;
+  onDeleteEssay: (id: string) => void;
+  onToggleComplete?: (id: string) => void;
   streak: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
-  diaries,
-  currentDate,
-  onSelectDate,
-  onDeleteDiary,
+  essays,
+  currentEssayId,
+  onSelectEssay,
+  onDeleteEssay,
   onToggleComplete,
   streak,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
 
-  const filteredDiaries = diaries.filter((d) => {
+  const filteredEssays = essays.filter((e) => {
     const q = searchQuery.toLowerCase();
     return (
-      d.date.includes(q) ||
-      (d.title && d.title.toLowerCase().includes(q)) ||
-      (d.preview && d.preview.toLowerCase().includes(q))
+      e.date.includes(q) ||
+      e.prompt.toLowerCase().includes(q) ||
+      (e.preview && e.preview.toLowerCase().includes(q))
     );
   });
 
@@ -41,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Search & Header */}
       <div className="p-3 border-b border-[#e9e8e4] dark:border-[#2a2a2a] space-y-2">
         <div className="flex items-center justify-between text-xs text-[#787774] dark:text-[#a0a0a0] font-medium px-1">
-          <span>일기 목록 ({diaries.length})</span>
+          <span>에세이 목록 ({essays.length})</span>
           <span className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/50 px-2 py-0.5 rounded font-semibold border border-amber-200/50 dark:border-amber-800/40">
             {streak}일 스트릭 🔥
           </span>
@@ -50,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Search className="w-3.5 h-3.5 text-[#9ca3af] dark:text-[#777777] absolute left-2.5 top-2.5" />
           <input
             type="text"
-            placeholder="일기 검색..."
+            placeholder="주제·본문 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-[#282828] border border-[#e2e1db] dark:border-[#383838] rounded-md text-xs placeholder:text-[#a8a7a1] dark:placeholder:text-[#666666] text-[#37352f] dark:text-[#e0e0e0] outline-none focus:border-[#787774] dark:focus:border-[#666666] transition-colors"
@@ -58,82 +58,80 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Diary List */}
+      {/* Essay List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {filteredDiaries.length === 0 ? (
-          <div className="text-center py-10 px-4 text-xs text-[#787774] dark:text-[#888888]">
-            {searchQuery ? '일치하는 일기가 없습니다.' : '작성된 일기가 없습니다.\n오늘의 첫 일기를 써보세요!'}
+        {filteredEssays.length === 0 ? (
+          <div className="text-center py-10 px-4 text-xs text-[#787774] dark:text-[#888888] whitespace-pre-line">
+            {searchQuery ? '일치하는 에세이가 없습니다.' : '아직 에세이가 없습니다.\n첫 주제를 골라보세요!'}
           </div>
         ) : (
-          filteredDiaries.map((diary) => {
-            const isSelected = diary.date === currentDate;
+          filteredEssays.map((essay) => {
+            const isSelected = essay.id === currentEssayId;
             return (
               <div
-                key={diary.date}
-                onClick={() => onSelectDate(diary.date)}
+                key={essay.id}
+                onClick={() => onSelectEssay(essay.id)}
                 className={`group relative p-2.5 rounded-lg text-left transition-all cursor-pointer border ${
                   isSelected
                     ? 'bg-white dark:bg-[#2c2c2c] border-[#dedad0] dark:border-[#444444] shadow-xs'
                     : 'border-transparent hover:bg-[#efeee9]/80 dark:hover:bg-[#282828] text-[#55534e] dark:text-[#b0b0b0]'
                 }`}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#37352f] dark:text-[#f0f0f0]">
-                    <Calendar className="w-3.5 h-3.5 text-[#787774] dark:text-[#888888]" />
-                    <span>{diary.date}</span>
-                    {diary.is_completed ? (
-                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.2 rounded font-medium border border-emerald-300/50 dark:border-emerald-700/50 flex items-center space-x-0.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 text-[11px] text-[#787774] dark:text-[#909090]">
+                    <span className="font-semibold text-[#37352f] dark:text-[#e0e0e0]">{essay.date}</span>
+                    <span className="px-1.5 rounded bg-stone-200/70 dark:bg-[#333333] text-stone-600 dark:text-stone-300 text-[10px]">
+                      {ESSAY_TYPE_LABELS[essay.essay_type]}
+                    </span>
+                    {essay.revision_of && (
+                      <RotateCcw className="w-3 h-3 text-amber-600 dark:text-amber-400" aria-label="고쳐 쓴 에세이" />
+                    )}
+                    {essay.is_completed && (
+                      <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 px-1 rounded border border-emerald-300/50 dark:border-emerald-700/50 flex items-center">
                         <Check className="w-2.5 h-2.5" />
-                        <span>완료</span>
                       </span>
-                    ) : diary.is_draft ? (
-                      <span className="text-[10px] bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 px-1 rounded font-normal">
-                        임시
-                      </span>
-                    ) : null}
+                    )}
                   </div>
                   <div className="flex items-center space-x-1">
-                    {diary.word_count !== undefined && !diary.is_draft && (
-                      <span className="text-[10px] font-medium text-stone-600 dark:text-stone-300 bg-stone-100 dark:bg-stone-800/60 px-1.5 py-0.2 rounded border border-stone-200 dark:border-stone-700/50 font-sans">
-                        {diary.word_count}단어
+                    {essay.overall_band != null ? (
+                      <span className="text-[10px] font-bold tabular-nums text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-1.5 rounded border border-indigo-200/70 dark:border-indigo-800/50">
+                        {essay.overall_band.toFixed(1)}
                       </span>
+                    ) : (
+                      <span className="text-[10px] text-stone-400 dark:text-stone-500">미첨삭</span>
                     )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onToggleComplete?.(diary.date);
+                        onToggleComplete?.(essay.id);
                       }}
                       className={`p-0.5 rounded transition-all ${
-                        diary.is_completed
+                        essay.is_completed
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-stone-300 dark:text-stone-600 hover:text-emerald-600 dark:hover:text-emerald-400 opacity-0 group-hover:opacity-100'
                       }`}
-                      title={diary.is_completed ? '완료 취소' : '완료로 표시'}
+                      title={essay.is_completed ? '완료 취소' : '완료로 표시'}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
-                <div className="text-xs font-medium text-[#37352f] dark:text-[#e0e0e0] mt-1 line-clamp-1">
-                  {diary.title || '제목 없음'}
+                <div className="text-xs font-medium text-[#37352f] dark:text-[#e0e0e0] mt-1 line-clamp-2 font-serif">
+                  {essay.prompt}
                 </div>
 
-                <div className="text-[11px] text-[#787774] dark:text-[#909090] line-clamp-1 mt-0.5 font-sans">
-                  {diary.preview || '내용 없음'}
-                </div>
-
-                <div className="flex items-center justify-between text-[10px] text-[#a8a7a1] dark:text-[#707070] mt-2">
-                  <span>{diary.word_count} 단어</span>
+                <div className="flex items-center justify-between text-[10px] text-[#a8a7a1] dark:text-[#707070] mt-1.5">
+                  <span>{essay.word_count} 단어</span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`${diary.date} 일기를 정말 삭제하시겠습니까?`)) {
-                        onDeleteDiary(diary.date);
+                      if (confirm('이 에세이를 삭제할까요? 첨삭 기록도 함께 지워집니다. (Anki 카드는 지워지지 않습니다)')) {
+                        onDeleteEssay(essay.id);
                       }
                     }}
                     className="opacity-0 group-hover:opacity-100 hover:text-red-600 dark:hover:text-red-400 p-1 transition-opacity"
-                    title="일기 삭제"
+                    title="에세이 삭제"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

@@ -1,31 +1,24 @@
-# ✍️ Daily English Diary (AI 일기 관리 & 실시간 Grammarly 첨삭 & Anki 연동)
+# ✍️ Daily English Essay (논증 에세이 연습 · AI 첨삭 · Anki 연동)
 
-매일 영어 일기를 작성하고, **Gemini 2.5 Flash**를 활용하여 **Grammarly 스타일의 실시간 인라인 첨삭(문법 교정, 원어민 자연스러운 패러프레이징, 원클릭 적용)**을 받으며, **Shadowing Player 호환 Anki 플래시카드(문장/단어)**로 즉시 내보내어 복습할 수 있는 노션/애플 메모 감성의 모던 웹 애플리케이션입니다.
-
----
+B2~C1 학습자를 위한 영어 **논증 에세이** 연습 앱입니다. 원래 일기 앱이었으나 2026-10-10에 에세이 중심으로 바꿨습니다(폴더·저장소 이름은 그대로).
 
 ## ✨ 핵심 기능
 
-1. **노션 / 애플 메모 스타일의 집중형 에디터**:
-   - 눈이 편안한 페이퍼 감성 미니멀 디자인
-   - 초단위 실시간 자동 임시 저장 (Draft Auto-save)으로 글 유실 방지
-2. **Grammarly 스타일 인라인 첨삭 & 원클릭 적용**:
-   - 🔴 문법 오류 (Grammar), 🟠 철자 (Spelling), 🟡 전달력 (Clarity), 🔵 원어민 표현 (Natural Expression), 🟢 어휘 (Vocabulary) 인라인 하이라이트
-   - 우측 사이드 패널의 교정 카드에서 **[적용 (Accept)]** 클릭 시 본문 텍스트 즉시 치환 및 하이라이트 자동 재정렬
-   - 4개 탭 비교: `작성 & 첨삭 모드` | `원어민 패러프레이징` | `문법 교정본` | `나란히 비교 (Diff)`
-   - AI 튜터의 일기 내용 공감 코멘트 및 영어 후속 질문 (Follow-up Question)
-3. **Shadowing Player 호환 Anki 연동 (카드 미리보기 모달)**:
-   - 교정 카드 및 본문 추출 표현마다 **[Anki 문장/단어 카드에 추가]** 버튼 제공
-   - 카드 등록 전 팝업 모달에서 앞면/뒷면/해설/덱 확인 및 수정 지원
-   - `gTTS` 원어민 오디오 파일 자동 생성 및 Anki 미디어 저장 (`[sound:...]` 태그 자동 생성)
-   - `English Sentence` 덱 (`1. Language::1.1. English::Sentence`) 및 `English Vocabulary` 덱 (`1. Language::1.1. English::Vocabulary`) 완벽 호환
-   - Anki 실행 상태 감지 및 원클릭 앱 실행(`open -a Anki`)
-4. **캘린더 & 스트릭 (Streak) 일기 관리**:
-   - 달력 뷰에서 날짜별 작성 현황(작성 여부, 단어 수, 점수) 한눈에 확인
-   - 연속 작성 스트릭(Streak) 추적 및 축하 애니메이션 (Confetti)
-5. **학습 분석 통계 대시보드 (Analytics)**:
-   - 자주 틀리는 문법 유형(시제, 전치사, 수일치, 관사 등) 발생 빈도 시각화
-   - 실수 패턴별 원문 vs 추천 예문 모음 및 Anki 카드 저장
+1. **주제 은행 (120개) + 자유 주제**
+   - 유형 5가지: 찬반 / 양쪽 견해 / 장단점 / 원인·해결 / 가정. 유형마다 훈련되는 구조(양보-반박, 인과, 가정법 등)가 다릅니다.
+   - 분야 비율 일반 50% · 내 분야(투자·퀀트·AI·커리어) 30% · 시사 20%로 추천합니다.
+   - 아직 쓰지 않은 주제만, 직전 에세이와 다른 유형으로 추천합니다. `backend/app/data/topics.json`
+   - 원하면 내 질문으로 바로 시작할 수 있습니다. 시간 제한·분량 제한은 없습니다.
+2. **AI 첨삭 (Gemini)**
+   - IELTS Task 2의 4대 기준(과제 수행 / 구성·흐름 / 어휘 / 문법) 밴드 추정과 기준별 코멘트
+   - 논증 피드백: 입장, 가장 강한 부분, 가장 약한 논거와 보강법, 다뤄야 할 반론, 문단별 코멘트
+   - 고쳐 쓸 때 집중할 2~3가지 + **같은 주제로 고쳐 쓰기**(이전 밴드와 비교)
+   - 인라인 교정(필수 교정 / 원어민 표현 / 스타일, 구문 단위 최소 수정) 원클릭 적용
+   - 같은 논지의 C1+ 업그레이드 버전, 문장별 대조
+3. **Anki 연동**: 교정 문장·핵심 표현을 `English Sentence` / `English Vocabulary` 덱에 추가합니다. 이 앱은 Anki 카드를 **삭제하지 않습니다**.
+4. **통계**: 에세이별 밴드 추이(기준별), 유형별 평균 밴드, 100단어당 교정 밀도, 작성 히트맵과 스트릭
+
+> AI 채점은 같은 글에도 0.5 밴드 정도 흔들립니다. 한 편의 점수보다 여러 편의 추세를 보세요.
 
 ---
 
@@ -54,7 +47,14 @@ python run.py
 cd frontend
 npm run dev
 ```
-- 웹 UI: `http://localhost:5173`
+- 웹 UI: `http://localhost:5173` (`API_TARGET` 환경변수로 백엔드 주소 변경 가능)
+
+**테스트**:
+```bash
+cd backend
+.venv/bin/python -m pytest -q
+```
+- 테스트는 임시 DB를 쓰며 `data/diary.db`를 건드리지 않습니다.
 
 ---
 
@@ -62,5 +62,5 @@ npm run dev
 
 - **Backend**: Python 3.11+, FastAPI (Lifespan), Pydantic v2, Google GenAI SDK (`google-genai`), `aiosqlite`, `gTTS`, `requests`, `python-dotenv`
 - **Frontend**: React 19, TypeScript (Strict), Vite, Tailwind CSS, Lucide React, Canvas Confetti
-- **Database**: SQLite (`data/diary.db`)
+- **Database**: SQLite (`data/diary.db`, `essays` / `essay_suggestions` 테이블. 예전 `diaries` 테이블은 건드리지 않고 남겨둠). `ESSAY_DB_PATH`로 경로 변경 가능
 - **Integration**: AnkiConnect (`http://localhost:8765`)

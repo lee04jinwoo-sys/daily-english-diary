@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DailyActivity, StatsResponse } from '../../types/diary';
+import { DailyActivity, StatsResponse } from '../../types/essay';
 import { StreakWidget } from './StreakWidget';
 import { 
   ChevronLeft, 
@@ -76,7 +76,7 @@ export const DiaryCalendar: React.FC<DiaryCalendarProps> = ({
                 {year}년 {monthNames[month]}
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                날짜를 클릭하면 해당 날짜의 일기 작성 및 첨삭 내역으로 이동합니다.
+                날짜를 클릭하면 그날 쓴 에세이로 이동합니다.
               </p>
             </div>
           </div>
@@ -124,8 +124,8 @@ export const DiaryCalendar: React.FC<DiaryCalendarProps> = ({
             const isToday = new Date().toISOString().slice(0, 10) === dateStr;
             const isSelected = currentDate === dateStr;
 
-            const hasWritten = activity && activity.has_diary && !activity.is_draft;
-            const isDraftOnly = activity && activity.is_draft && activity.word_count > 0;
+            const hasWritten = Boolean(activity && activity.best_band != null);
+            const isDraftOnly = Boolean(activity && activity.best_band == null && activity.word_count > 0);
 
             return (
               <div
@@ -163,20 +163,20 @@ export const DiaryCalendar: React.FC<DiaryCalendarProps> = ({
                   {hasWritten ? (
                     <>
                       <div className="text-[10px] text-emerald-800 dark:text-emerald-300 font-medium font-sans">
-                        {activity.word_count} words
+                        {activity!.essay_count}편 · {activity!.word_count} words
                       </div>
                       <div className="text-[9px] text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/50 px-1 py-0.2 rounded font-semibold inline-block">
-                        {activity.score}점
+                        Band {activity!.best_band!.toFixed(1)}
                       </div>
                     </>
                   ) : isDraftOnly ? (
                     <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-                      임시 저장
+                      첨삭 전
                     </div>
                   ) : (
                     <div className="text-[10px] text-stone-300 dark:text-stone-600 group-hover:text-stone-400 dark:group-hover:text-stone-400 flex items-center space-x-1">
                       <PenLine className="w-2.5 h-2.5" />
-                      <span>작성하기</span>
+                      <span>-</span>
                     </div>
                   )}
                 </div>

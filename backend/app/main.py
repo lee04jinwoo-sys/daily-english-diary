@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import init_db
-from app.api.routers import diaries, review, anki, stats, dict as dict_router
+from app.api.routers import essays, topics, review, anki, stats, dict as dict_router
 
 # Configure logging
 logging.basicConfig(
@@ -15,14 +15,14 @@ logger = logging.getLogger("daily-english-diary")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Daily English Diary Backend...")
+    logger.info("Starting Daily English Essay backend...")
     await init_db()
     yield
-    logger.info("Shutting down Daily English Diary Backend...")
+    logger.info("Shutting down Daily English Essay backend...")
 
 app = FastAPI(
-    title="Daily English Diary API",
-    description="AI-powered English Diary review with Grammarly-style inline feedback and Anki export",
+    title="Daily English Essay API",
+    description="Argumentative essay practice with AI review, inline feedback and Anki export",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -37,7 +37,8 @@ app.add_middleware(
 )
 
 # Include Routers
-app.include_router(diaries.router)
+app.include_router(essays.router)
+app.include_router(topics.router)
 app.include_router(review.router)
 app.include_router(dict_router.router)
 app.include_router(anki.router)

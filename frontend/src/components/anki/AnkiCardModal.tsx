@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CardType, AnkiStatus } from '../../types/diary';
+import { CardType, AnkiStatus } from '../../types/essay';
 import { api } from '../../api/client';
 import { X, BookmarkPlus, Volume2, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -9,7 +9,6 @@ interface AnkiCardModalProps {
   cardType: CardType;
   initialText: string;
   context?: string;
-  diaryDate?: string;
   ankiStatus: AnkiStatus | null;
   onCardAdded: (message: string) => void;
 }
@@ -20,7 +19,6 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
   cardType: initialCardType,
   initialText,
   context = '',
-  diaryDate = '',
   ankiStatus,
   onCardAdded,
 }) => {
@@ -103,7 +101,6 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
           translation: meaning.trim() || explanation.trim(),
           deck_name: deckName,
           model_name: modelName,
-          diary_date: diaryDate,
         });
         if (res.success) {
           onCardAdded(res.duplicate ? '이미 존재하는 문장입니다 (중복 방지)' : 'Anki 문장 카드가 성공적으로 등록되었습니다!');
@@ -119,7 +116,6 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
           explanation: explanation.trim(),
           deck_name: deckName,
           model_name: modelName,
-          diary_date: diaryDate,
         });
         if (res.success) {
           onCardAdded(res.duplicate ? '이미 존재하는 단어입니다 (중복 방지)' : 'Anki 단어 카드가 성공적으로 등록되었습니다!');

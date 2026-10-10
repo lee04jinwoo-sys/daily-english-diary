@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SuggestionItem, ReviewResponse, CardType } from '../../types/diary';
+import { SuggestionItem, ReviewResponse, CardType, Essay } from '../../types/essay';
 import { SuggestionCard } from './SuggestionCard';
 import { CompareTabs } from './CompareTabs';
 import { SentenceStudyView } from './SentenceStudyView';
 import { WordPopover } from '../common/WordPopover';
+import { EssayPromptHeader } from './EssayPromptHeader';
+import { EssayFeedback } from './EssayFeedback';
 import { api } from '../../api/client';
 import { 
   Sparkles, 
   BookOpen, 
   CheckCircle, 
-  MessageSquare, 
   BookmarkPlus, 
   PenLine, 
   Eye, 
@@ -21,8 +22,10 @@ import {
 } from 'lucide-react';
 
 interface GrammarlyEditorProps {
-  title: string;
-  onTitleChange: (title: string) => void;
+  essay: Essay;
+  onPromptChange: (prompt: string) => void;
+  onRevise: () => void;
+  previousBand?: number | null;
   content: string;
   onContentChange: (content: string) => void;
   onReview: () => void;
@@ -32,13 +35,14 @@ interface GrammarlyEditorProps {
   onApplySuggestion: (suggestion: SuggestionItem) => void;
   onDismissSuggestion: (id: string) => void;
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
-  diaryDate?: string;
   onShowToast: (msg: string) => void;
 }
 
 export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
-  title,
-  onTitleChange,
+  essay,
+  onPromptChange,
+  onRevise,
+  previousBand,
   content,
   onContentChange,
   onReview,
@@ -48,16 +52,14 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   onApplySuggestion,
   onDismissSuggestion,
   onOpenAnkiModal,
-  diaryDate = '',
   onShowToast,
 }) => {
+  const essayId = essay.id;
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'editor' | 'sentence' | 'native'>('editor');
   const [suggestionFilter, setSuggestionFilter] = useState<'pending' | 'applied'>('pending');
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [copied, setCopied] = useState<string | null>(null);
-  const [isSavingFullNative, setIsSavingFullNative] = useState(false);
-  const [isSavedFullNative, setIsSavedFullNative] = useState(false);
   const [savingVocabIndex, setSavingVocabIndex] = useState<number | null>(null);
   const [savedVocabIndexes, setSavedVocabIndexes] = useState<Set<number>>(new Set());
 
@@ -95,7 +97,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
         }
       })
       .catch(() => {});
-  }, [reviewResult?.key_expressions, diaryDate]);
+  }, [reviewResult?.key_expressions, essayId]);
 
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -118,28 +120,6 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           }
         }, 0);
       }
-    }
-  };
-
-  const handleDirectAddFullNative = async () => {
-    if (!reviewResult?.native_text) return;
-    setIsSavingFullNative(true);
-    try {
-      const res = await api.addSentenceCard({
-        sentence: reviewResult.native_text,
-        translation: title || '오늘의 원어민 일기 완성본',
-        diary_date: diaryDate,
-      });
-      if (res.success) {
-        setIsSavedFullNative(true);
-        onShowToast(res.duplicate ? '이미 Anki에 등록된 문장입니다.' : '원어민 일기가 Anki에 저장되었습니다! 🎉');
-      } else {
-        onShowToast('Anki 앱이 켜져 있는지 확인해주세요! (상단 Anki 상태 확인)');
-      }
-    } catch (e: any) {
-      onShowToast(`Anki 등록 실패: ${e.message}`);
-    } finally {
-      setIsSavingFullNative(false);
     }
   };
 
@@ -181,7 +161,6 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           synonyms: k.synonyms || '',
           example: k.example || '',
           explanation: k.explanation || '',
-          diary_date: diaryDate,
         });
         if (res.success) {
           setSavedVocabIndexes((prev) => new Set(prev).add(idx));
@@ -266,7 +245,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           onClick={() => setIsEditMode(true)}
           className="text-stone-400 dark:text-stone-500 font-serif italic py-10 cursor-text"
         >
-          작성된 일기 내용이 없습니다. 클릭하여 일기를 작성해보세요.
+          아직 작성한 내용이 없습니다. 클릭하여 에세이를 써보세요.
         </div>
       );
     }
@@ -386,7 +365,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           {reviewResult && (
             <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 rounded-full text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>정확도 {reviewResult.score}점</span>
+              <span>Band {reviewResult.rubric.overall_band.toFixed(1)}</span>
             </div>
           )}
 
@@ -409,14 +388,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Scrollable Paper Page Container */}
           <div className="flex-1 overflow-y-auto px-10 py-6 max-w-3xl mx-auto w-full space-y-5 pb-20">
-            {/* Title Input */}
-            <input
-              type="text"
-              placeholder="일기 제목을 입력하세요 (예: A rainy afternoon at the cafe)"
-              value={title}
-              onChange={(e) => onTitleChange(e.target.value)}
-              className="w-full text-2xl font-serif font-bold text-[#1c1b18] dark:text-[#f0f0f0] placeholder:text-stone-300 dark:placeholder:text-[#555555] bg-transparent outline-none border-b border-transparent focus:border-stone-200 dark:focus:border-[#383838] pb-2 transition-colors"
-            />
+            <EssayPromptHeader essay={essay} onPromptChange={onPromptChange} previousBand={previousBand} />
 
             {/* Editor Canvas Box */}
             <div className="w-full bg-white dark:bg-[#222222] rounded-2xl border border-[#e9e8e4] dark:border-[#333333] shadow-xs p-6 flex flex-col transition-colors">
@@ -486,7 +458,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                   onChange={(e) => onContentChange(e.target.value)}
                   onKeyDown={handleTextareaKeyDown}
                   spellCheck={true}
-                  placeholder="오늘 하루 있었던 일이나 생각을 자유롭게 영어로 적어보세요...&#10;&#10;작성을 마친 후 상단의 [AI 첨삭 받기]를 누르면 Grammarly 스타일의 실시간 문법 교정과 원어민 표현 제안을 받을 수 있습니다."
+                  placeholder="위 질문에 대한 내 입장을 영어로 써보세요. 분량은 자유입니다.&#10;&#10;다 쓰면 상단의 [AI 첨삭 받기]를 눌러 4대 기준 채점, 논증 피드백, 인라인 교정을 받으세요."
                   className="w-full min-h-[280px] bg-transparent resize-none outline-none font-serif text-base text-[#2c2b28] dark:text-[#e4e4e4] leading-relaxed placeholder:text-stone-300 dark:placeholder:text-[#555555] placeholder:font-sans selection:bg-amber-100 dark:selection:bg-amber-900/60 overflow-hidden"
                   autoFocus
                 />
@@ -503,25 +475,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             {/* AI Review Summary / Feedback & Key Expressions */}
             {reviewResult && (
               <div className="space-y-4 pt-2">
-                {/* AI Warm Feedback */}
-                <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/50 dark:from-amber-950/30 dark:to-orange-950/20 border border-amber-200/80 dark:border-amber-800/40 rounded-xl p-5 shadow-xs">
-                  <div className="flex items-center space-x-2 text-xs font-semibold text-amber-900 dark:text-amber-300 mb-2">
-                    <MessageSquare className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    <span>AI 튜터의 오늘 일기 코멘트</span>
-                  </div>
-                  <p className="text-xs text-amber-950 dark:text-amber-200 leading-relaxed font-sans">
-                    {reviewResult.overall_feedback}
-                  </p>
-                  
-                  {reviewResult.followup_question && (
-                    <div className="mt-3.5 pt-3 border-t border-amber-200/50 dark:border-amber-800/30 flex items-start space-x-2 text-xs text-amber-900 dark:text-amber-300 font-medium">
-                      <span className="text-sm">💬</span>
-                      <span>
-                        <strong className="text-amber-800 dark:text-amber-300">Q.</strong> {reviewResult.followup_question}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                <EssayFeedback review={reviewResult} onRevise={onRevise} />
 
                 {/* Key Expressions Extracted */}
                 {reviewResult.key_expressions && reviewResult.key_expressions.length > 0 && (
@@ -529,7 +483,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                     <div className="text-xs font-semibold text-[#37352f] dark:text-[#e0e0e0] flex items-center justify-between mb-3.5">
                       <span className="flex items-center space-x-1.5">
                         <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        <span>오늘의 핵심 추천 표현 (Vocabulary & Idioms)</span>
+                        <span>다음 에세이에 쓸 논증 표현 (Key Expressions)</span>
                       </span>
                       <span className="text-[11px] text-[#787774] dark:text-[#999999]">
                         클릭하여 Anki 단어 카드에 등록
@@ -634,7 +588,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-400 dark:text-stone-500 space-y-2">
                   <CheckCircle className="w-8 h-8 text-emerald-500/80 dark:text-emerald-400/80" />
                   <div className="text-xs font-medium text-stone-600 dark:text-stone-300">
-                    {reviewResult ? '모든 제안을 적용하셨습니다! 🎉' : '일기 작성 후 [AI 첨삭 받기]를 눌러보세요.'}
+                    {reviewResult ? '모든 제안을 적용하셨습니다! 🎉' : '에세이 작성 후 [AI 첨삭 받기]를 눌러보세요.'}
                   </div>
                   {appliedSuggestions.length > 0 && (
                     <button
@@ -703,8 +657,8 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           <SentenceStudyView
             sentencePairs={reviewResult?.sentence_pairs || []}
             originalContent={content}
-            nativeContent={reviewResult?.native_text || ''}
-            diaryDate={diaryDate}
+            nativeContent={reviewResult?.upgraded_text || ''}
+            essayId={essayId}
             onShowToast={onShowToast}
           />
         </div>
@@ -720,7 +674,6 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
               position={popoverState.position}
               onClose={() => setPopoverState({ word: '', context: '', position: null })}
               onShowToast={onShowToast}
-              diaryDate={diaryDate}
             />
           )}
 
@@ -728,44 +681,24 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             <div className="flex items-center justify-between pb-4 border-b border-indigo-50 dark:border-indigo-900/30">
               <div>
                 <h3 className="text-base font-bold text-indigo-950 dark:text-indigo-200 flex items-center space-x-2">
-                  <span>📖 Native Paraphrased Story (원어민 완성본)</span>
+                  <span>📖 C1+ Upgraded Version (같은 논지, 한 단계 위)</span>
                 </h3>
                 <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
                   단어를 클릭하면 팝업 사전이 뜨며, 버튼 클릭 시 Anki로 즉시 저장됩니다.
                 </p>
               </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleCopy(reviewResult?.native_text || '', 'native')}
-                  className="flex items-center space-x-1 text-xs text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {copied === 'native' ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied === 'native' ? '복사됨' : '본문 복사'}</span>
-                </button>
-                <button
-                  onClick={handleDirectAddFullNative}
-                  disabled={isSavingFullNative}
-                  className={`flex items-center space-x-1 text-xs px-3 py-1.5 rounded-lg transition-all shadow-xs ${
-                    isSavedFullNative
-                      ? 'bg-emerald-700 text-white'
-                      : 'text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600'
-                  }`}
-                >
-                  {isSavingFullNative ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : isSavedFullNative ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <BookmarkPlus className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isSavingFullNative ? '전송 중' : isSavedFullNative ? 'Anki 등록됨 ✓' : 'Anki에 전체 등록'}</span>
-                </button>
-              </div>
+              <button
+                onClick={() => handleCopy(reviewResult?.upgraded_text || '', 'native')}
+                className="flex items-center space-x-1 text-xs text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                {copied === 'native' ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copied === 'native' ? '복사됨' : '본문 복사'}</span>
+              </button>
             </div>
             <div className="font-serif text-base text-[#2c2b28] dark:text-[#e8e8e8] leading-relaxed whitespace-pre-wrap selection:bg-indigo-100 dark:selection:bg-indigo-900">
-              {reviewResult?.native_text
-                ? renderInteractiveNativeText(reviewResult.native_text)
-                : '아직 원어민 패러프레이징이 생성되지 않았습니다. [AI 첨삭 받기]를 먼저 실행해주세요.'}
+              {reviewResult?.upgraded_text
+                ? renderInteractiveNativeText(reviewResult.upgraded_text)
+                : '아직 업그레이드 버전이 없습니다. [AI 첨삭 받기]를 먼저 실행해주세요.'}
             </div>
           </div>
         </div>

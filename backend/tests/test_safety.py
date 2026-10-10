@@ -4,7 +4,7 @@ import pytest
 from app.schemas.review import SuggestionItem
 from app.services import anki_service as anki_module
 from app.services.anki_service import anki_service
-from app.services.diary_service import diary_service
+from app.services.essay_service import essay_service
 from app.services.gemini_service import gemini_service
 
 
@@ -34,8 +34,8 @@ async def test_fresh_db_can_store_suggestions(fresh_db):
         start_idx=0,
         end_idx=6,
     )
-    await diary_service.save_suggestions("2099-01-01", [item])
-    saved = await diary_service.get_suggestions("2099-01-01")
+    await essay_service.save_suggestions("essay-1", [item])
+    saved = await essay_service.get_suggestions("essay-1")
     assert len(saved) == 1
     assert saved[0].tier == "accuracy"
     assert saved[0].subcategory == "시제(Tense)"
@@ -82,5 +82,6 @@ async def test_review_failure_is_reported_not_faked(client, monkeypatch):
     # Previously a Gemini failure came back as a normal review with score 80,
     # which the frontend then saved as if it were real feedback.
     monkeypatch.setattr(gemini_service, "_client", _FailingClient())
-    res = await client.post("/api/review", json={"date": "2099-01-02", "content": "I went to school."})
+    e = (await client.post("/api/essays", json={"prompt": "Is chess a sport?", "essay_type": "free"})).json()
+    res = await client.post("/api/review", json={"essay_id": e["id"], "content": "I went to school."})
     assert res.status_code == 502

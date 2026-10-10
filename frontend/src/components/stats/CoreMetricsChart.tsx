@@ -9,7 +9,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { DailyTrendItem } from '../../types/diary';
+import { DailyTrendItem } from '../../types/essay';
 import { Sparkles } from 'lucide-react';
 
 interface CoreMetricsChartProps {
@@ -39,10 +39,10 @@ export const CoreMetricsChart: React.FC<CoreMetricsChartProps> = ({ data }) => {
         <div className="space-y-0.5">
           <h3 className="font-serif font-bold text-base text-stone-900 dark:text-[#f0f0f0] flex items-center space-x-2">
             <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-            <span>원어민 문장 일치율 & 3대 오류 밀도 추이</span>
+            <span>교정 없이 유지된 비율 & 3대 오류 밀도 추이</span>
           </h3>
           <p className="text-xs text-stone-500 dark:text-stone-400">
-            원어민 일치율(초록, 좌측 축)과 100단어당 오류 유형별 밀도(문법/정확도: 빨강, 표현/콜로케이션: 주황, 스타일: 하늘색, 우측 축)입니다.
+            교정 없이 유지된 비율(초록, 좌측 축)과 100단어당 오류 유형별 밀도(문법/정확도: 빨강, 표현/콜로케이션: 주황, 스타일: 하늘색, 우측 축)입니다.
           </p>
         </div>
       </div>
@@ -87,7 +87,7 @@ export const CoreMetricsChart: React.FC<CoreMetricsChartProps> = ({ data }) => {
               }}
               labelStyle={{ fontWeight: 'bold', color: '#e0e7ff', marginBottom: '4px' }}
               formatter={(value: any, name: any) => {
-                if (name === '원어민 일치율') return [`${value}%`, name];
+                if (name === '교정 없이 유지된 비율') return [`${value}%`, name];
                 if (
                   name === '문법/정확도 오류' ||
                   name === '원어민 표현 제안' ||
@@ -108,7 +108,7 @@ export const CoreMetricsChart: React.FC<CoreMetricsChartProps> = ({ data }) => {
               yAxisId="left"
               type="monotone"
               dataKey="nciVal"
-              name="원어민 일치율"
+              name="교정 없이 유지된 비율"
               stroke="#10b981"
               strokeWidth={3}
               dot={{ r: 4, fill: '#10b981' }}

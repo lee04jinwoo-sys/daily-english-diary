@@ -14,7 +14,6 @@ interface WordPopoverProps {
   position: { x: number; y: number } | null;
   onClose: () => void;
   onShowToast: (msg: string) => void;
-  diaryDate?: string;
 }
 
 interface WordData {
@@ -33,7 +32,6 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
   position,
   onClose,
   onShowToast,
-  diaryDate = '',
 }) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WordData | null>(null);
@@ -124,7 +122,6 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
           explanation: data.explanation,
           deck_name: '1. Language::1.1. English::Vocabulary',
           model_name: 'English Vocabulary',
-          diary_date: diaryDate,
         });
 
         if (res.success) {

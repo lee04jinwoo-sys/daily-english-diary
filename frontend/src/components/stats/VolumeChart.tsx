@@ -9,7 +9,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { DailyTrendItem } from '../../types/diary';
+import { DailyTrendItem } from '../../types/essay';
 import { PenTool } from 'lucide-react';
 
 interface VolumeChartProps {

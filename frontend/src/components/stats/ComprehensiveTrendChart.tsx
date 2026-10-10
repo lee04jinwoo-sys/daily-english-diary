@@ -9,7 +9,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { DailyTrendItem } from '../../types/diary';
+import { DailyTrendItem } from '../../types/essay';
 import { LineChart as LineChartIcon } from 'lucide-react';
 
 interface ComprehensiveTrendChartProps {
@@ -95,7 +95,7 @@ export const ComprehensiveTrendChart: React.FC<ComprehensiveTrendChartProps> = (
               labelStyle={{ fontWeight: 'bold', color: '#818cf8', marginBottom: '6px' }}
               formatter={(value: any, name: any, item: any) => {
                 if (name === '단어 수') return [`${value} 단어`, name];
-                if (name === '원어민 문장 일치율') return [`${value}%`, name];
+                if (name === '교정 없이 유지된 비율') return [`${value}%`, name];
                 if (name === '문장 수') return [`${value} 문장`, name];
                 if (name === '오류 밀도' || name === '오류 밀도 (전체)') {
                   const p = item.payload;
@@ -123,12 +123,12 @@ export const ComprehensiveTrendChart: React.FC<ComprehensiveTrendChartProps> = (
               dot={{ r: 4, fill: '#6366f1' }}
               activeDot={{ r: 6, stroke: '#ffffff', strokeWidth: 2 }}
             />
-            {/* 2. 원어민 문장 일치율 (NCI %): Emerald Solid Line */}
+            {/* 2. 교정 없이 유지된 비율 (NCI %): Emerald Solid Line */}
             <Line
               yAxisId="metrics"
               type="monotone"
               dataKey="nciVal"
-              name="원어민 문장 일치율"
+              name="교정 없이 유지된 비율"
               stroke="#10b981"
               strokeWidth={2.5}
               dot={{ r: 4, fill: '#10b981' }}

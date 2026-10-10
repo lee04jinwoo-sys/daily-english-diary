@@ -41,7 +41,7 @@ export const CompareTabs: React.FC<CompareTabsProps> = ({
             : 'text-[#787774] dark:text-[#a0a0a0] hover:text-indigo-700 dark:hover:text-indigo-300'
         }`}
       >
-        📖 원어민 패러프레이징 본문
+        📖 C1+ 업그레이드 버전
       </button>
     </div>
   );

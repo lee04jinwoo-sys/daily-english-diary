@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SentencePair } from '../../types/diary';
+import { SentencePair } from '../../types/essay';
 import { WordPopover } from '../common/WordPopover';
 import { api } from '../../api/client';
 import { 
@@ -16,7 +16,7 @@ interface SentenceStudyViewProps {
   sentencePairs?: SentencePair[];
   originalContent: string;
   nativeContent: string;
-  diaryDate?: string;
+  essayId?: string;
   onShowToast: (msg: string) => void;
 }
 
@@ -71,7 +71,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
   sentencePairs = [],
   originalContent,
   nativeContent,
-  diaryDate = '',
+  essayId = '',
   onShowToast,
 }) => {
   const [playingKey, setPlayingKey] = useState<string | null>(null);
@@ -122,12 +122,12 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     });
   }, [sentencePairs, originalContent, nativeContent]);
 
-  // Reset editing data whenever the diary date or pairs change to prevent cross-diary state leakage
+  // Reset editing data whenever the essay or pairs change to prevent cross-essay state leakage
   useEffect(() => {
     setEditedData({});
     setEditingKey(null);
     setSavedKeys(new Set());
-  }, [diaryDate]);
+  }, [essayId]);
 
   // Sync edited data with pairs
   useEffect(() => {
@@ -142,9 +142,9 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     if (Object.keys(initial).length > 0) {
       setEditedData(initial);
     }
-  }, [pairs, diaryDate]);
+  }, [pairs, essayId]);
 
-  // Fast Anki cross-check for all sentences and words in this diary
+  // Fast Anki cross-check for all sentences and words in this essay
   useEffect(() => {
     if (!pairs || pairs.length === 0) return;
     const sList: string[] = [];
@@ -168,7 +168,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
         }
       })
       .catch(() => {});
-  }, [pairs, diaryDate]);
+  }, [pairs, essayId]);
 
   const handleFieldChange = (id: string, field: keyof EditableSentence, value: string) => {
     setEditedData((prev) => ({
@@ -217,7 +217,6 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
           translation: translationText.trim(),
           deck_name: '1. Language::1.1. English::Sentence',
           model_name: 'English Sentence',
-          diary_date: diaryDate,
         });
 
         if (res.success) {
@@ -337,7 +336,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
       <div className="bg-white dark:bg-[#1f1f1f] rounded-2xl border border-stone-200 dark:border-[#2f2f2f] p-10 text-center space-y-3">
         <Sparkles className="w-8 h-8 text-blue-500 mx-auto animate-pulse" />
         <h3 className="text-sm font-bold text-stone-900 dark:text-[#f0f0f0]">
-          일기 작성 후 [AI 첨삭 받기]를 실행해주세요.
+          에세이 작성 후 [AI 첨삭 받기]를 실행해주세요.
         </h3>
       </div>
     );
@@ -353,7 +352,6 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
           position={popoverState.position}
           onClose={() => setPopoverState({ word: '', context: '', position: null })}
           onShowToast={onShowToast}
-          diaryDate={diaryDate}
         />
       )}
 
