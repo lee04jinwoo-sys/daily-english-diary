@@ -6,6 +6,7 @@ import { SentenceStudyView } from './SentenceStudyView';
 import { WordPopover } from '../common/WordPopover';
 import { EssayPromptHeader } from './EssayPromptHeader';
 import { EssayFeedback } from './EssayFeedback';
+import { useWritingTimer, formatDuration, IDLE_LIMIT_MS } from '../../hooks/useWritingTimer';
 import { api } from '../../api/client';
 import { 
   Sparkles, 
@@ -18,7 +19,9 @@ import {
   Check,
   CheckCircle2,
   Clock,
-  Loader2
+  Loader2,
+  Timer,
+  Pause
 } from 'lucide-react';
 
 interface GrammarlyEditorProps {
@@ -55,6 +58,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   onShowToast,
 }) => {
   const essayId = essay.id;
+  const timer = useWritingTimer(essay.id, essay.writing_seconds);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'editor' | 'sentence' | 'native'>('editor');
   const [suggestionFilter, setSuggestionFilter] = useState<'pending' | 'applied'>('pending');
@@ -111,6 +115,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
       const selStart = textareaRef.current.selectionStart;
       if (selStart > 0 && content[selStart - 1] === ' ') {
         e.preventDefault();
+        timer.markActivity();
         const newContent = content.slice(0, selStart) + ' ' + content.slice(selStart);
         onContentChange(newContent);
         setTimeout(() => {
@@ -358,6 +363,20 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
         />
 
         <div className="flex items-center space-x-3 shrink-0">
+          <span
+            className={`flex items-center space-x-1 text-xs font-medium tabular-nums px-2 py-0.5 rounded-md border ${
+              timer.isRunning
+                ? 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60'
+                : 'text-[#787774] dark:text-[#999999] bg-transparent border-transparent'
+            }`}
+            title={`타자를 치는 동안만 잽니다. ${IDLE_LIMIT_MS / 60000}분 동안 입력이 없으면 멈추고, 다시 치면 이어서 잽니다.`}
+          >
+            {timer.isRunning ? <Timer className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+            <span>{formatDuration(timer.seconds)}</span>
+            {!timer.isRunning && (
+              <span className="font-sans">{timer.hasStarted ? '멈춤' : '입력하면 시작'}</span>
+            )}
+          </span>
           <span className="text-xs text-[#787774] dark:text-[#999999] font-medium font-sans">
             {wordCount} words
           </span>
@@ -455,7 +474,10 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                 <textarea
                   ref={textareaRef}
                   value={content}
-                  onChange={(e) => onContentChange(e.target.value)}
+                  onChange={(e) => {
+                    timer.markActivity();
+                    onContentChange(e.target.value);
+                  }}
                   onKeyDown={handleTextareaKeyDown}
                   spellCheck={true}
                   placeholder="위 질문에 대한 내 입장을 영어로 써보세요. 분량은 자유입니다.&#10;&#10;다 쓰면 상단의 [AI 첨삭 받기]를 눌러 4대 기준 채점, 논증 피드백, 인라인 교정을 받으세요."

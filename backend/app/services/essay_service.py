@@ -48,6 +48,7 @@ class EssayService:
             is_reviewed=review is not None,
             is_completed=bool(row["is_completed"]),
             overall_band=row["overall_band"],
+            writing_seconds=row["writing_seconds"],
             review=review,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -75,17 +76,23 @@ class EssayService:
         return self._row_to_response(row) if row else None
 
     async def update(self, essay_id: str, req: EssayUpdateRequest) -> Optional[EssayResponse]:
-        essay = await self.get(essay_id)
-        if not essay:
-            return None
-        content = essay.content if req.content is None else req.content
-        prompt = essay.prompt if req.prompt is None else req.prompt.strip()
+        # Only the provided fields are written, in one statement, so a timer save and a
+        # content autosave arriving together cannot overwrite each other with stale values.
+        sets, params = ["updated_at = ?"], [datetime.datetime.now().isoformat()]
+        if req.content is not None:
+            sets += ["content = ?", "word_count = ?"]
+            params += [req.content, _count_words(req.content)]
+        if req.prompt is not None:
+            sets.append("prompt = ?")
+            params.append(req.prompt.strip())
+        if req.writing_seconds is not None:
+            sets.append("writing_seconds = MAX(writing_seconds, ?)")
+            params.append(req.writing_seconds)
         async with _connect() as db:
-            await db.execute(
-                "UPDATE essays SET content = ?, prompt = ?, word_count = ?, updated_at = ? WHERE id = ?",
-                (content, prompt, _count_words(content), datetime.datetime.now().isoformat(), essay_id),
-            )
+            cur = await db.execute(f"UPDATE essays SET {', '.join(sets)} WHERE id = ?", (*params, essay_id))
             await db.commit()
+            if cur.rowcount == 0:
+                return None
         return await self.get(essay_id)
 
     async def revise(self, essay_id: str) -> Optional[EssayResponse]:
@@ -142,6 +149,7 @@ class EssayService:
                 is_reviewed=bool(r["review_json"]),
                 is_completed=bool(r["is_completed"]),
                 overall_band=r["overall_band"],
+                writing_seconds=r["writing_seconds"],
                 preview=preview[:80] + ("..." if len(preview) > 80 else ""),
                 updated_at=r["updated_at"],
             ))

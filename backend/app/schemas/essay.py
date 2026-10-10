@@ -17,6 +17,7 @@ class EssayCreateRequest(BaseModel):
 class EssayUpdateRequest(BaseModel):
     content: Optional[str] = None
     prompt: Optional[str] = None
+    writing_seconds: Optional[int] = Field(default=None, ge=0, description="Active writing time; never decreases")
 
 
 class EssayResponse(BaseModel):
@@ -32,6 +33,7 @@ class EssayResponse(BaseModel):
     is_reviewed: bool = False
     is_completed: bool = False
     overall_band: Optional[float] = None
+    writing_seconds: int = 0
     review: Optional[ReviewResponse] = None
     created_at: str
     updated_at: str
@@ -48,6 +50,7 @@ class EssayListItem(BaseModel):
     is_reviewed: bool
     is_completed: bool
     overall_band: Optional[float] = None
+    writing_seconds: int = 0
     preview: str
     updated_at: str
 

@@ -122,7 +122,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-[#a8a7a1] dark:text-[#707070] mt-1.5">
-                  <span>{essay.word_count} 단어</span>
+                  <span>
+                    {essay.word_count} 단어
+                    {essay.writing_seconds > 0 && ` · ${Math.max(1, Math.round(essay.writing_seconds / 60))}분`}
+                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

@@ -27,10 +27,16 @@ async def init_db() -> None:
             is_completed INTEGER NOT NULL DEFAULT 0,
             overall_band REAL,
             review_json TEXT,
+            writing_seconds INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
         """)
+
+        cursor = await db.execute("PRAGMA table_info(essays)")
+        essay_columns = [row[1] for row in await cursor.fetchall()]
+        if "writing_seconds" not in essay_columns:
+            await db.execute("ALTER TABLE essays ADD COLUMN writing_seconds INTEGER NOT NULL DEFAULT 0")
 
         await db.execute("""
         CREATE TABLE IF NOT EXISTS essay_suggestions (

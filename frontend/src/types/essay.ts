@@ -118,6 +118,7 @@ export interface Essay {
   is_reviewed: boolean;
   is_completed: boolean;
   overall_band: number | null;
+  writing_seconds: number;
   review: ReviewResponse | null;
   created_at: string;
   updated_at: string;
@@ -134,6 +135,7 @@ export interface EssayListItem {
   is_reviewed: boolean;
   is_completed: boolean;
   overall_band: number | null;
+  writing_seconds: number;
   preview: string;
   updated_at: string;
 }
