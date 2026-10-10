@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SuggestionItem, ReviewResponse, CardType, Essay } from '../../types/essay';
+import { SuggestionItem, ReviewResponse, CardType, Essay, SentencePair } from '../../types/essay';
 import { SuggestionCard } from './SuggestionCard';
 import { CompareTabs } from './CompareTabs';
 import { SentenceStudyView } from './SentenceStudyView';
@@ -59,8 +59,33 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
 }) => {
   const essayId = essay.id;
   const timer = useWritingTimer(essay.id, essay.writing_seconds);
+
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'editor' | 'sentence' | 'native'>('editor');
+  // Sentence pairs are generated on demand the first time the tab is opened.
+  const [lazyPairs, setLazyPairs] = useState<SentencePair[] | null>(null);
+  const [pairsState, setPairsState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const storedPairs = reviewResult?.sentence_pairs || [];
+  const sentencePairs = storedPairs.length > 0 ? storedPairs : lazyPairs || [];
+
+  useEffect(() => {
+    setLazyPairs(null);
+    setPairsState('idle');
+  }, [reviewResult]);
+
+  useEffect(() => {
+    if (activeTab !== 'sentence' || !reviewResult || storedPairs.length > 0 || lazyPairs || pairsState !== 'idle') return;
+    setPairsState('loading');
+    api.getSentencePairs(essay.id)
+      .then((pairs) => {
+        setLazyPairs(pairs);
+        setPairsState('idle');
+      })
+      .catch((e) => {
+        setPairsState('error');
+        onShowToast(`문장별 대조를 만들지 못했습니다: ${e.message}`);
+      });
+  }, [activeTab, reviewResult, storedPairs.length, lazyPairs, pairsState, essay.id, onShowToast]);
   const [suggestionFilter, setSuggestionFilter] = useState<'pending' | 'applied'>('pending');
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [copied, setCopied] = useState<string | null>(null);
@@ -676,13 +701,20 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
       {/* 2. Tab: Sentence Study View (Shadowing Player Style 1:1) */}
       {activeTab === 'sentence' && (
         <div className="flex-1 overflow-y-auto px-10 py-6 max-w-4xl mx-auto w-full">
+          {pairsState === 'loading' ? (
+            <div className="flex flex-col items-center justify-center py-24 text-stone-400 dark:text-stone-500 space-y-3">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <div className="text-xs">문장별 대조를 만드는 중입니다 (처음 한 번만)...</div>
+            </div>
+          ) : (
           <SentenceStudyView
-            sentencePairs={reviewResult?.sentence_pairs || []}
+            sentencePairs={sentencePairs}
             originalContent={content}
             nativeContent={reviewResult?.upgraded_text || ''}
             essayId={essayId}
             onShowToast={onShowToast}
           />
+          )}
         </div>
       )}
 

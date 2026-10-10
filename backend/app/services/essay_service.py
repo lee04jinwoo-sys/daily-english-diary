@@ -115,6 +115,12 @@ class EssayService:
             await db.commit()
         await self.save_suggestions(essay_id, review.suggestions)
 
+    async def save_sentence_pairs(self, essay_id: str, review: ReviewResponse) -> None:
+        """Store generated sentence pairs inside the existing review without touching anything else."""
+        async with _connect() as db:
+            await db.execute("UPDATE essays SET review_json = ? WHERE id = ?", (review.model_dump_json(), essay_id))
+            await db.commit()
+
     async def toggle_complete(self, essay_id: str) -> Optional[EssayResponse]:
         async with _connect() as db:
             cur = await db.execute(

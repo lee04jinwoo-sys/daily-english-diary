@@ -55,7 +55,7 @@ async def test_malformed_patterns_are_skipped(client, monkeypatch):
     ])
     monkeypatch.setattr(gemini_service, "_client", _FakeClient(payload))
     e = (await client.post("/api/essays", json={"prompt": "Privacy?", "essay_type": "free"})).json()
-    body = (await client.post("/api/review", json={"essay_id": e["id"], "content": "Some essay text here."})).json()
+    body = (await client.post("/api/review", json={"essay_id": e["id"], "content": "Some essay with a single string."})).json()
     assert body["recurring_patterns"] == [
         {"pattern": "관사 누락", "count": 3, "examples": ["a single string"], "fix": "a/the", "tip": ""}
     ]

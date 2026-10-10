@@ -5,6 +5,7 @@ import {
   EssayCategory,
   Topic,
   ReviewResponse,
+  SentencePair,
   SuggestionItem,
   AnkiStatus,
   AnkiActionResponse,
@@ -61,6 +62,9 @@ export const api = {
     fetchJson<Essay>(`/essays/${id}/toggle-complete`, { method: 'PATCH' }),
   getEssaySuggestions: (id: string) =>
     fetchJson<SuggestionItem[]>(`/essays/${id}/suggestions`),
+
+  getSentencePairs: (id: string) =>
+    fetchJson<SentencePair[]>(`/essays/${id}/sentence-pairs`, { method: 'POST' }),
 
   // Topics
   suggestTopic: (exclude: string[] = []) =>

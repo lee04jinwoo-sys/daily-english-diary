@@ -2,7 +2,8 @@ from typing import List
 from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.essay import EssayCreateRequest, EssayListResponse, EssayResponse, EssayUpdateRequest
-from app.schemas.review import SuggestionItem
+from app.schemas.review import SentencePair, SuggestionItem
+from app.services.gemini_service import GeminiError, gemini_service
 from app.services.essay_service import essay_service
 
 router = APIRouter(prefix="/api/essays", tags=["Essays"])
@@ -64,3 +65,22 @@ async def delete_essay(essay_id: str):
 @router.get("/{essay_id}/suggestions", response_model=List[SuggestionItem])
 async def get_suggestions(essay_id: str):
     return await essay_service.get_suggestions(essay_id)
+
+
+@router.post("/{essay_id}/sentence-pairs", response_model=List[SentencePair])
+async def sentence_pairs(essay_id: str):
+    """Sentence-by-sentence study pairs, generated on first request and stored with the review."""
+    essay = await essay_service.get(essay_id)
+    if not essay:
+        raise _not_found(essay_id)
+    if not essay.review:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="먼저 AI 첨삭을 받아야 합니다.")
+    if essay.review.sentence_pairs:
+        return essay.review.sentence_pairs
+    try:
+        pairs = await gemini_service.generate_sentence_pairs(essay.review)
+    except GeminiError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"문장별 대조 생성에 실패했습니다: {e}")
+    essay.review.sentence_pairs = pairs
+    await essay_service.save_sentence_pairs(essay_id, essay.review)
+    return pairs

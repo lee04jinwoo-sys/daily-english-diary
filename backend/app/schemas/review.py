@@ -14,7 +14,7 @@ class KeyExpression(BaseModel):
     meaning: str = Field(..., description="Korean meaning")
     pos: Optional[str] = Field(default="idiom", description="Part of speech: n, v, adj, adv, idiom, prep, conj")
     synonyms: Optional[str] = Field(default="", description="2~3 synonyms separated by comma")
-    example: str = Field(..., description="Pure English example sentence without Korean notes")
+    example: str = Field(default="", description="Pure English example sentence; filled in when saved to Anki")
     explanation: Optional[str] = Field(default="", description="Anki Manager 3-step explanation formula")
 
 class VocabItem(BaseModel):

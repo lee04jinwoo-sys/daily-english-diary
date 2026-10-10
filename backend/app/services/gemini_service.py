@@ -11,6 +11,7 @@ from app.schemas.review import (
     EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment, RecurringPattern,
 )
 from app.schemas.anki import CardPreviewResponse, CardType
+from app.services.text_utils import apply_suggestions, split_sentences
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ ESSAY_TYPE_GUIDE = {
 
 
 MAX_SUGGESTION_WORDS = 12
+REVIEW_THINKING_BUDGET = 2048
 
 
 _CONTRACTIONS = [
@@ -206,95 +208,71 @@ class GeminiService:
         return -1, -1
 
     async def review_essay(self, essay_id: str, prompt_text: str, essay_type: str, content: str) -> ReviewResponse:
-        """Reviews an argumentative essay: IELTS-style 4-criterion bands, argument-level feedback,
-        inline fixes, and a C1+ rewrite that keeps the writer's own argument."""
+        """Reviews an essay for output practice: bands, recurring patterns, inline fixes, a C1+ rewrite.
+
+        Sentence-by-sentence pairs and the corrected full text are not generated here
+        (see generate_sentence_pairs / apply_suggestions), which keeps the output small.
+        """
         type_guide = ESSAY_TYPE_GUIDE.get(essay_type, ESSAY_TYPE_GUIDE["free"])
+        # Static instructions first and the essay last, so the shared prefix can be cached.
         prompt = f"""
-당신은 IELTS Writing Task 2 채점 경험이 많은 영어 작문 코치이자 Anki 어휘 제작 전문가입니다.
-학습자는 토플 100점 수준(B2~C1)의 한국인입니다. 칭찬보다 다음 단계로 올라가기 위한 구체적이고 냉정한 피드백을 주세요.
-이 연습의 목적은 형식을 갖춘 글쓰기 실력이 아니라 **영어 출력**, 즉 자기 생각을 영어로 정확하고 자연스럽게 꺼내는 능력입니다.
-서론·결론의 유무, 문단 형식, 분량은 감점하지 않습니다. 피드백의 중심은 언어(어휘 선택, 문법, 한국어 직역 습관)입니다.
+당신은 IELTS Writing Task 2 채점 경험이 많은 영어 코치입니다. 학습자는 토플 100점 수준(B2~C1)의 한국인입니다.
+이 연습의 목적은 형식을 갖춘 글쓰기가 아니라 **영어 출력**, 즉 자기 생각을 영어로 정확하고 자연스럽게 꺼내는 능력입니다.
+서론·결론 유무, 문단 형식, 분량은 감점하지도 지적하지도 않습니다. 피드백의 중심은 언어입니다. 칭찬보다 구체적이고 냉정하게.
 
-[에세이 문제]: {prompt_text}
-[에세이 유형]: {type_guide}
-[학습자 에세이]:
-\"\"\"{content}\"\"\"
+[점검 절차] 답을 쓰기 전에 에세이를 첫 문장부터 마지막 문장까지 한 문장씩 점검하세요.
+문장마다 주어-동사 수일치, 관사(가산명사 단수, the internet처럼 관용적으로 the가 붙는 명사), 동사 형태(to부정사/동명사,
+사역·지각동사 구문), 전치사, 단어 선택(한국어 직역)을 확인하고, 발견한 오류는 하나도 빠짐없이 suggestions에 넣습니다.
 
-[채점 원칙]
-1. rubric: IELTS Task 2의 4개 기준으로 각각 0~9 밴드(0.5 단위)와 한국어 한 줄 코멘트를 줍니다.
+[출력 지침]
+1. rubric: IELTS 4개 기준 각각 0~9 밴드(0.5 단위) + 한국어 한 줄 코멘트. overall_band는 4개 평균을 0.5 단위로 반올림.
    - task_response: 질문에 답했는가, 하고 싶은 말(입장과 근거)이 분명히 전달되는가
-   - coherence: 문장과 아이디어가 자연스럽게 이어지는가, 연결어 사용(남용 포함). 형식적인 문단 구성은 보지 않습니다.
+   - coherence: 문장과 아이디어가 자연스럽게 이어지는가, 연결어 사용(남용 포함)
    - lexical: 어휘의 정확성·폭·콜로케이션
-   - grammar: 문법 정확성과 복문·양보·가정 등 구조의 다양성
-   - overall_band: 4개 평균을 0.5 단위로 반올림
-   - 형식(서론·결론, 문단 수)과 분량으로는 감점하지 않고, 코멘트에서도 형식을 지적하지 마세요.
-2. argument: 내용 수준의 피드백(한국어, 간결하게).
-   - thesis: 입장이 얼마나 분명하고 논쟁 가능한가
-   - strongest_point: 가장 설득력 있는 부분
-   - weakest_point: 가장 약한 논거와 구체적인 보강 방법. 학습자가 든 예시나 근거가 오히려 자기 주장과 모순되면
-     (예: '아무도 사생활 공개를 요구하지 않는 직업' 목록에 정치인을 넣음) 반드시 이것부터 지적하세요.
-   - missing_counterargument: 다뤘어야 할 반론과 그에 대한 재반박 방향(이미 잘 다뤘다면 그렇다고 쓰기)
-   - paragraph_comments: 문단 번호(1부터)별 한 줄 코멘트
-3. revision_focus: 고쳐 쓸 때 집중할 2~3가지(한국어, 각 한 문장, 실행 가능한 지시).
-   형식이 아니라 표현에 관한 것이어야 합니다(반복 오류 패턴, 더 정확한 단어, 하려던 말을 더 정확히 하는 법).
-3-1. recurring_patterns: 같은 종류의 오류나 한국어 직역 습관이 2번 이상 나오면 하나로 묶습니다(최대 4개, 많은 순).
-   - pattern: 패턴 이름(한국어, 예: "privacy를 '사생활 내용'의 뜻으로 사용", "가산명사 단수에 관사 누락")
-   - count: 이 글에서 실제로 나온 횟수
-   - examples: 원문에 그대로 있는 해당 구문들
-   - fix: 올바른 형태(영어)
-   - tip: 다음에 기억할 한 문장(한국어)
-   - 반복되지 않은 한 번짜리 오류는 넣지 마세요. 없으면 빈 배열.
-4. corrected_text: 학습자의 구조와 논지를 그대로 두고 문법·철자·명백한 오류만 고친 전문.
-5. upgraded_text: 같은 입장·같은 논거로 C1+ 필자가 썼을 법한 버전. 문단 구조는 유지하되 논리 연결, 정확한 어휘,
-   양보/반박 구조를 보강합니다. 기준 문체는 좋은 신문 칼럼(예: The Economist)처럼 정확하고 담백한 논증문입니다.
-   - 금지: 미사여구, 과장된 형용사(formidable, exorbitant 등을 습관적으로 쓰기), IELTS 템플릿 상투구
-     (foster an environment conducive to, it is undeniable that, in this day and age, plays a pivotal role 등).
-6. suggestions (인라인 교정, tier 필수):
-   - "accuracy": 틀린 문법/철자/관사/수일치/시제 등 명백한 오류만
-   - "idiom": 문법은 맞지만 어색한 직역투, 부정확한 단어 선택, 더 정확한 콜로케이션
-   - "style": 더 정확하거나 자연스러운 표현, 연결어 다양화(선택 사항)
-   - 축약형(doesn't, it's 등)을 풀어 쓰라는 제안과 단순 격식 조정은 하지 마세요. 출력 연습에서 축약형은 오류가 아닙니다.
-   - 같은 오류가 여러 번 나오면 나올 때마다 각각 suggestion을 만드세요.
-   - suggested_phrase 자체에 원래와 같은 오류가 남아 있으면 안 됩니다(예: 'reveal their privacy'를 그대로 두는 제안 금지).
-   - 모든 tier 공통: original_phrase는 원문에 그대로 있는 2~7단어 구문만. 문장 전체를 바꾸는 제안은 금지합니다.
-     문장 단위 재구성은 upgraded_text와 sentence_pairs의 native에서만 보여주세요.
-   - suggested_phrase는 학습자의 단어를 최대한 살린 최소 수정이어야 합니다
-     (예: 'make companies to allow' -> 'make companies allow' 또는 'require companies to allow').
-7. sentence_pairs: 문장별 original / corrected / native(= upgraded 버전의 대응 문장) / translation(한국어) / explanation(한국어) / vocab.
-8. key_expressions: upgraded_text에서 학습자가 다음 에세이에 바로 쓸 만한 논증 표현·콜로케이션 4~8개.
-   - 표기 표준화: someone/something/sb/sth 대신 A, B, C 및 V-ing (예: 'attribute A to B')
-   - pos: "n", "v", "adj", "adv", "idiom", "prep", "conj" 중 하나
-   - synonyms: 2~3개 (쉼표 구분)
-   - example: 100% 영어 예문(A, B는 실제 단어로 치환, 괄호·한국어 금지)
-   - explanation: 3단계 공식(3~4문장) ① 의미/뉘앙스 ② 유의어 비교 ③ 콜로케이션 '[영어표현](한글뜻)'
+   - grammar: 문법 정확성과 구조의 다양성
+2. argument (한국어, 각 1~2문장): thesis, strongest_point, weakest_point, missing_counterargument,
+   paragraph_comments(문단 번호별 한 줄). 학습자의 예시가 자기 주장과 모순되면 weakest_point에서 그것부터 지적하세요.
+3. recurring_patterns: 같은 오류·한국어 직역 습관이 2번 이상 나오면 묶습니다(최대 4개, 많은 순, 없으면 []).
+   '관사 오류', '직역투' 같은 넓은 범주가 아니라 구체적인 단어·구조 단위로 묶으세요
+   (예: "privacy를 '사생활 내용'의 뜻으로 사용", "'the famous'를 사람 명사로 반복", "가산명사 life 단수에 관사 누락").
+   pattern(한국어 이름), count(실제 횟수), examples(원문에 그대로 있는 구문), fix(영어), tip(한국어 한 문장).
+4. revision_focus: 고쳐 쓸 때 집중할 표현상의 2~3가지(한국어, 각 한 문장).
+5. suggestions (tier 필수):
+   - "accuracy": 명백한 오류 / "idiom": 어색한 직역투·부정확한 단어·콜로케이션 / "style": 더 자연스러운 표현(선택)
+   - original_phrase는 원문에 글자 그대로 있는 2~7단어 구문이며, 에세이 안에서 한 번만 나와야 합니다.
+     같은 단어가 여러 번 나오면 앞뒤 단어를 붙여 위치를 특정하세요(예: 'internet' 대신 'social media and internet').
+     문장 전체를 바꾸는 제안 금지.
+   - suggested_phrase는 학습자의 단어를 살린 최소 수정이며, 같은 오류가 남아 있으면 안 됩니다.
+   - 같은 오류가 여러 번 나오면 나올 때마다 각각 만드세요. 축약형 풀기·격식 조정 제안은 하지 마세요.
+   - explanation은 한국어 한 문장.
+6. upgraded_text: 같은 입장·논거로 C1+ 필자가 쓴 버전. 좋은 신문 칼럼처럼 정확하고 담백하게.
+   미사여구, 과장된 형용사, IELTS 상투구(foster an environment conducive to, it is undeniable that, plays a pivotal role 등) 금지.
+7. key_expressions: upgraded_text에서 다음 글에 바로 쓸 표현 4~6개. expression(someone/something 대신 A, B, V-ing 표기),
+   meaning(한국어), pos("n","v","adj","adv","idiom","prep","conj" 중 하나)만 쓰세요.
+8. overall_feedback: 한국어 2~3문장(현재 수준, 가장 큰 약점, 다음 한 걸음).
 
 [JSON 응답 규격]
 {{
-  "corrected_text": "...",
-  "upgraded_text": "...",
-  "overall_feedback": "총평 한국어 3문장: 현재 수준, 가장 큰 약점, 다음 한 걸음",
-  "rubric": {{
-    "task_response": {{"band": 6.5, "comment": "..."}},
-    "coherence": {{"band": 6.5, "comment": "..."}},
-    "lexical": {{"band": 7.0, "comment": "..."}},
-    "grammar": {{"band": 6.5, "comment": "..."}},
-    "overall_band": 6.5
-  }},
-  "argument": {{
-    "thesis": "...", "strongest_point": "...", "weakest_point": "...", "missing_counterargument": "...",
-    "paragraph_comments": [{{"paragraph": 1, "comment": "..."}}]
-  }},
-  "revision_focus": ["...", "..."],
-  "recurring_patterns": [{{"pattern": "...", "count": 3, "examples": ["...", "..."], "fix": "...", "tip": "..."}}],
+  "rubric": {{"task_response": {{"band": 6.5, "comment": "..."}}, "coherence": {{"band": 6.5, "comment": "..."}},
+             "lexical": {{"band": 6.5, "comment": "..."}}, "grammar": {{"band": 6.5, "comment": "..."}}, "overall_band": 6.5}},
+  "argument": {{"thesis": "...", "strongest_point": "...", "weakest_point": "...", "missing_counterargument": "...",
+               "paragraph_comments": [{{"paragraph": 1, "comment": "..."}}]}},
+  "recurring_patterns": [{{"pattern": "...", "count": 2, "examples": ["..."], "fix": "...", "tip": "..."}}],
+  "revision_focus": ["..."],
   "suggestions": [{{"original_phrase": "...", "suggested_phrase": "...", "tier": "accuracy", "category": "Grammar", "subcategory": "관사(Article)", "explanation": "..."}}],
-  "sentence_pairs": [{{"original": "...", "corrected": "...", "native": "...", "translation": "...", "explanation": "...", "vocab": [{{"word": "...", "meaning": "...", "pos": "v"}}]}}],
-  "key_expressions": [{{"expression": "...", "meaning": "...", "pos": "idiom", "synonyms": "...", "example": "...", "explanation": "..."}}]
+  "upgraded_text": "...",
+  "key_expressions": [{{"expression": "...", "meaning": "...", "pos": "v"}}],
+  "overall_feedback": "..."
 }}
+
+[에세이 유형]: {type_guide}
+[에세이 문제]: {prompt_text}
+[학습자 에세이]:
+\"\"\"{content}\"\"\"
 """
         try:
-            data = await self._generate_json(prompt, 0.3, thinking_budget=1024)
+            data = await self._generate_json(prompt, 0, thinking_budget=REVIEW_THINKING_BUDGET)
 
-            # Process suggestions
             processed_suggestions: List[SuggestionItem] = []
             matched_spans: List[tuple] = []
 
@@ -307,10 +285,15 @@ class GeminiService:
                 # No-op edits and contraction expansions are not corrections in output practice.
                 if suggested == orig or is_contraction_only(orig, suggested):
                     continue
+                # A phrase that occurs more than once cannot be pinned to one place;
+                # applying it to the wrong occurrence would corrupt correct text.
+                if content.count(orig) > 1:
+                    continue
                 start_idx, end_idx = self._find_exact_offsets(content, orig, matched_spans)
-                if start_idx != -1:
-                    matched_spans.append((start_idx, end_idx))
-                
+                if start_idx == -1:
+                    continue  # not in the essay: cannot be applied and may be hallucinated
+                matched_spans.append((start_idx, end_idx))
+
                 cat = item.get("category", "Grammar")
                 if cat not in ["Grammar", "Spelling", "Clarity", "Natural Expression", "Vocabulary"]:
                     cat = "Grammar"
@@ -327,7 +310,7 @@ class GeminiService:
                 processed_suggestions.append(SuggestionItem(
                     id=str(uuid.uuid4())[:8],
                     original_phrase=orig,
-                    suggested_phrase=item.get("suggested_phrase", ""),
+                    suggested_phrase=suggested,
                     category=cat,
                     subcategory=item.get("subcategory", "기타 문법"),
                     tier=tier,
@@ -337,42 +320,19 @@ class GeminiService:
                     is_applied=False
                 ))
 
-            # Sort suggestions by start_idx
-            processed_suggestions.sort(key=lambda s: s.start_idx if s.start_idx != -1 else 999999)
+            processed_suggestions.sort(key=lambda s: s.start_idx)
 
-            # Process sentence pairs
-            sentence_pairs: List[SentencePair] = []
-            raw_pairs = data.get("sentence_pairs", [])
-            for idx, sp in enumerate(raw_pairs, start=1):
-                vocab_list = [
-                    VocabItem(
-                        word=v.get("word", ""),
-                        meaning=v.get("meaning", ""),
-                        pos=v.get("pos", "")
-                    )
-                    for v in sp.get("vocab", [])
-                    if v.get("word")
-                ]
-                orig_s = sp.get("original", "").strip()
-                corr_s = sp.get("corrected", "").strip() or orig_s
-                nat_s = sp.get("native", "").strip() or corr_s
-
-                sentence_pairs.append(SentencePair(
-                    id=f"S{idx}",
-                    index=idx,
-                    original=orig_s,
-                    corrected=corr_s,
-                    native=nat_s,
-                    translation=sp.get("translation", "").strip(),
-                    explanation=sp.get("explanation", "").strip(),
-                    vocab=vocab_list
-                ))
+            patterns = []
+            for p in parse_patterns(data.get("recurring_patterns")):
+                p.examples = [ex for ex in p.examples if ex in content]
+                if p.examples:
+                    patterns.append(p)
 
             key_exprs = [
                 KeyExpression(
                     expression=normalize_vocab_placeholders(k.get("expression", "").strip()),
                     meaning=k.get("meaning", "").strip(),
-                    pos=k.get("pos", "idiom").strip(),
+                    pos=(k.get("pos") or "idiom").strip(),
                     synonyms=k.get("synonyms", "").strip(),
                     example=clean_vocab_example(k.get("example", "").strip()),
                     explanation=k.get("explanation", "").strip()
@@ -381,24 +341,84 @@ class GeminiService:
                 if k.get("expression")
             ]
 
+            corrected = apply_suggestions(content, processed_suggestions)
             return ReviewResponse(
                 essay_id=essay_id,
                 original_text=content,
-                corrected_text=data.get("corrected_text") or content,
-                upgraded_text=data.get("upgraded_text") or data.get("corrected_text") or content,
+                corrected_text=corrected,
+                upgraded_text=data.get("upgraded_text") or corrected,
                 overall_feedback=data.get("overall_feedback", ""),
                 rubric=parse_rubric(data.get("rubric") or {}),
                 argument=parse_argument(data.get("argument") or {}),
                 revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
-                recurring_patterns=parse_patterns(data.get("recurring_patterns")),
+                recurring_patterns=patterns,
                 suggestions=processed_suggestions,
-                sentence_pairs=sentence_pairs,
+                sentence_pairs=[],
                 key_expressions=key_exprs
             )
 
         except Exception as e:
             logger.error(f"Gemini review error: {e}", exc_info=True)
             raise GeminiError(str(e)) from e
+
+    async def generate_sentence_pairs(self, review: ReviewResponse) -> List[SentencePair]:
+        """Sentence-by-sentence study pairs, generated only when the user opens that tab.
+
+        original/corrected come from code (the stored suggestions); the model only aligns each
+        sentence with the upgraded version and adds a translation, a short note and up to 3 words.
+        """
+        text = review.original_text
+        spans = split_sentences(text)
+        rows = []
+        for i, (a, b) in enumerate(spans, start=1):
+            rows.append({"index": i, "original": text[a:b],
+                         "corrected": apply_suggestions(text, review.suggestions, start=a, end=b)})
+        if not rows:
+            return []
+
+        listing = "\n".join(f'{r["index"]}. {r["corrected"]}' for r in rows)
+        prompt = f"""
+아래는 학습자 문장(교정본) 목록과 같은 내용을 C1+ 수준으로 다시 쓴 글입니다. 문장 번호마다 다음을 JSON으로 주세요.
+- native: 다시 쓴 글에서 그 문장에 대응하는 부분(한두 문장, 다시 쓴 글의 문장을 그대로 사용)
+- translation: native의 자연스러운 한국어 번역
+- explanation: 교정본과 native의 핵심 차이 한국어 한 문장
+- vocab: native에서 배울 만한 단어·표현 최대 3개 (word, meaning(한국어), pos)
+
+{{"pairs": [{{"index": 1, "native": "...", "translation": "...", "explanation": "...", "vocab": [{{"word": "...", "meaning": "...", "pos": "v"}}]}}]}}
+
+[학습자 문장]
+{listing}
+
+[다시 쓴 글]
+{review.upgraded_text}
+"""
+        try:
+            data = await self._generate_json(prompt, 0.2)
+        except Exception as e:
+            logger.error(f"Sentence pair generation error: {e}", exc_info=True)
+            raise GeminiError(str(e)) from e
+
+        by_index = {}
+        for p in data.get("pairs", []):
+            try:
+                by_index[int(p.get("index"))] = p
+            except (TypeError, ValueError):
+                continue
+        pairs = []
+        for r in rows:
+            p = by_index.get(r["index"], {})
+            pairs.append(SentencePair(
+                id=f"S{r['index']}",
+                index=r["index"],
+                original=r["original"],
+                corrected=r["corrected"],
+                native=(p.get("native") or r["corrected"]).strip(),
+                translation=(p.get("translation") or "").strip(),
+                explanation=(p.get("explanation") or "").strip(),
+                vocab=[VocabItem(word=v.get("word", ""), meaning=v.get("meaning", ""), pos=v.get("pos", ""))
+                       for v in (p.get("vocab") or [])[:3] if isinstance(v, dict) and v.get("word")],
+            ))
+        return pairs
 
     async def lookup_word(self, word: str, context: str = "") -> dict:
         """Instant dictionary lookup adhering to Anki Manager / Shadowing Player standards."""
