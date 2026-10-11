@@ -8,11 +8,11 @@ interface EssayFeedbackProps {
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
 }
 
-const CRITERIA: Array<{ key: 'task_response' | 'coherence' | 'lexical' | 'grammar'; label: string }> = [
-  { key: 'task_response', label: '과제 수행' },
-  { key: 'coherence', label: '구성·흐름' },
-  { key: 'lexical', label: '어휘' },
-  { key: 'grammar', label: '문법 범위·정확성' },
+const CRITERIA: Array<{ key: 'task_response' | 'coherence' | 'lexical' | 'grammar'; label: string; short: string }> = [
+  { key: 'task_response', label: '과제 수행', short: '과제' },
+  { key: 'coherence', label: '구성·흐름', short: '흐름' },
+  { key: 'lexical', label: '어휘', short: '어휘' },
+  { key: 'grammar', label: '문법 범위·정확성', short: '문법' },
 ];
 
 export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, onOpenAnkiModal }) => {
@@ -32,40 +32,17 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, 
   ].filter((r) => r.value);
 
   return (
-    <div className="space-y-4">
-      {/* Rubric */}
-      <div className="bg-white dark:bg-[#222222] rounded-xl border border-stone-200 dark:border-[#333333] p-5 shadow-xs">
-        <div className="flex items-center justify-between mb-3.5">
-          <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#37352f] dark:text-[#e0e0e0]">
-            <Scale className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span>IELTS 4대 기준 채점 (추정)</span>
+    <div id="essay-feedback" className="space-y-4 scroll-mt-4">
+      {/* Overall feedback */}
+      {review.overall_feedback && (
+        <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/50 dark:from-amber-950/30 dark:to-orange-950/20 border border-amber-200/80 dark:border-amber-800/40 rounded-xl p-5 shadow-xs">
+          <div className="flex items-center space-x-2 text-xs font-semibold text-amber-900 dark:text-amber-300 mb-2">
+            <MessageSquare className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span>총평</span>
           </div>
-          <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300 tabular-nums">
-            Band {rubric.overall_band.toFixed(1)}
-          </span>
+          <p className="text-xs text-amber-950 dark:text-amber-200 leading-relaxed">{review.overall_feedback}</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {CRITERIA.map(({ key, label }) => (
-            <div key={key} className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-stone-700 dark:text-stone-300">{label}</span>
-                <span className="font-bold tabular-nums text-stone-900 dark:text-stone-100">
-                  {rubric[key].band.toFixed(1)}
-                </span>
-              </div>
-              <div className="h-1.5 mt-2 rounded-full bg-stone-200 dark:bg-[#333333] overflow-hidden">
-                <div
-                  className="h-full bg-indigo-500 dark:bg-indigo-400 rounded-full"
-                  style={{ width: `${(rubric[key].band / 9) * 100}%` }}
-                />
-              </div>
-              {rubric[key].comment && (
-                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-2 leading-relaxed">{rubric[key].comment}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Recurring patterns */}
       {patterns.length > 0 && (
@@ -105,17 +82,29 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, 
         </div>
       )}
 
-      {/* Overall feedback */}
-      {review.overall_feedback && (
-        <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/50 dark:from-amber-950/30 dark:to-orange-950/20 border border-amber-200/80 dark:border-amber-800/40 rounded-xl p-5 shadow-xs">
-          <div className="flex items-center space-x-2 text-xs font-semibold text-amber-900 dark:text-amber-300 mb-2">
-            <MessageSquare className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <span>총평</span>
+      {/* Revision focus */}
+      <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-800/40 rounded-xl p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-1.5 text-xs font-semibold text-indigo-900 dark:text-indigo-200">
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>고쳐 쓸 때 집중할 것</span>
           </div>
-          <p className="text-xs text-amber-950 dark:text-amber-200 leading-relaxed">{review.overall_feedback}</p>
+          <button
+            onClick={onRevise}
+            className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-95"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>같은 주제로 고쳐 쓰기</span>
+          </button>
         </div>
-      )}
-
+        {review.revision_focus.length > 0 && (
+          <ol className="list-decimal list-inside space-y-1 text-xs text-indigo-950 dark:text-indigo-100">
+            {review.revision_focus.map((f, i) => (
+              <li key={i} className="leading-relaxed">{f}</li>
+            ))}
+          </ol>
+        )}
+      </div>
       {/* Argument */}
       {(argumentRows.length > 0 || argument.paragraph_comments.length > 0) && (
         <div className="bg-white dark:bg-[#222222] rounded-xl border border-stone-200 dark:border-[#333333] p-5 shadow-xs space-y-3">
@@ -146,29 +135,34 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, 
         </div>
       )}
 
-      {/* Revision focus */}
-      <div className="bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-800/40 rounded-xl p-5 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-1.5 text-xs font-semibold text-indigo-900 dark:text-indigo-200">
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>고쳐 쓸 때 집중할 것</span>
-          </div>
-          <button
-            onClick={onRevise}
-            className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white text-xs font-semibold rounded-lg shadow-xs transition-all active:scale-95"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>같은 주제로 고쳐 쓰기</span>
-          </button>
+      {/* Scores: reference only, collapsed */}
+      <details className="group bg-white dark:bg-[#222222] rounded-xl border border-stone-200 dark:border-[#333333] shadow-xs">
+        <summary className="cursor-pointer list-none p-4 flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
+          <span className="flex items-center space-x-1.5">
+            <Scale className="w-3.5 h-3.5" />
+            <span>점수 (참고용, AI 추정)</span>
+          </span>
+          <span className="tabular-nums">
+            종합 {rubric.overall_band.toFixed(1)} ·{' '}
+            {CRITERIA.map(({ key, short }) => `${short} ${rubric[key].band.toFixed(1)}`).join(' · ')}
+            <span className="ml-2 group-open:hidden">▾</span>
+            <span className="ml-2 hidden group-open:inline">▴</span>
+          </span>
+        </summary>
+        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {CRITERIA.map(({ key, label }) => (
+            <div key={key} className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-stone-700 dark:text-stone-300">{label}</span>
+                <span className="font-bold tabular-nums text-stone-900 dark:text-stone-100">{rubric[key].band.toFixed(1)}</span>
+              </div>
+              {rubric[key].comment && (
+                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-2 leading-relaxed">{rubric[key].comment}</p>
+              )}
+            </div>
+          ))}
         </div>
-        {review.revision_focus.length > 0 && (
-          <ol className="list-decimal list-inside space-y-1 text-xs text-indigo-950 dark:text-indigo-100">
-            {review.revision_focus.map((f, i) => (
-              <li key={i} className="leading-relaxed">{f}</li>
-            ))}
-          </ol>
-        )}
-      </div>
+      </details>
     </div>
   );
 };

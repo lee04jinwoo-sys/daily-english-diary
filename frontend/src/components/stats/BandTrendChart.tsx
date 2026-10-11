@@ -39,7 +39,7 @@ export const BandTrendChart: React.FC<BandTrendChartProps> = ({ data, typeBands,
         <div className="space-y-0.5">
           <h3 className="font-serif font-bold text-base text-stone-900 dark:text-[#f0f0f0] flex items-center space-x-2">
             <Scale className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <span>에세이별 Band 추이 (IELTS 4대 기준, AI 추정)</span>
+            <span>참고: 에세이별 점수 추이 (AI 추정)</span>
           </h3>
           <p className="text-xs text-stone-500 dark:text-stone-400">
             AI 채점은 같은 글에도 0.5 정도 흔들릴 수 있습니다. 한 편의 점수보다 여러 편에 걸친 방향을 보세요.

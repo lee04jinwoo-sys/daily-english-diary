@@ -106,6 +106,12 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   const suggestionListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const mustFixPer100 = (() => {
+    if (!reviewResult) return '0';
+    const words = reviewResult.original_text.trim().split(/\s+/).filter(Boolean).length || 1;
+    const mustFix = (reviewResult.suggestions || []).filter((s) => (s.tier || 'accuracy') === 'accuracy').length;
+    return ((mustFix / words) * 100).toFixed(1);
+  })();
 
   // Cross-check Key Expressions against Anki
   useEffect(() => {
@@ -399,7 +405,9 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             {timer.isRunning ? <Timer className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
             <span>{formatDuration(timer.seconds)}</span>
             {!timer.isRunning && (
-              <span className="font-sans">{timer.hasStarted ? '멈춤' : '입력하면 시작'}</span>
+              <span className="font-sans">
+                {timer.hasStarted ? '멈춤' : wordCount > 0 ? '기록 없음 · 입력하면 시작' : '입력하면 시작'}
+              </span>
             )}
           </span>
           <span className="text-xs text-[#787774] dark:text-[#999999] font-medium font-sans">
@@ -407,10 +415,18 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           </span>
 
           {reviewResult && (
-            <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 rounded-full text-xs font-semibold">
+            <button
+              onClick={() => {
+                setActiveTab('editor');
+                setTimeout(() => document.getElementById('essay-feedback')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+              }}
+              className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-full text-xs font-semibold transition-colors"
+              title="첨삭 당시 기준, 100단어당 필수 교정(명백한 오류) 수. 클릭하면 피드백으로 이동합니다."
+            >
               <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Band {reviewResult.rubric.overall_band.toFixed(1)}</span>
-            </div>
+              <span>필수 교정 {mustFixPer100} / 100단어</span>
+              <span className="text-emerald-600/70 dark:text-emerald-400/70">· 피드백 보기 ↓</span>
+            </button>
           )}
 
           <button

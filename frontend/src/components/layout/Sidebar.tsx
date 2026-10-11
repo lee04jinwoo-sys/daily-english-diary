@@ -94,7 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   <div className="flex items-center space-x-1">
                     {essay.overall_band != null ? (
-                      <span className="text-[10px] font-bold tabular-nums text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/50 px-1.5 rounded border border-indigo-200/70 dark:border-indigo-800/50">
+                      <span className="text-[10px] tabular-nums text-stone-400 dark:text-stone-500" title="AI 추정 점수 (참고용)">
                         {essay.overall_band.toFixed(1)}
                       </span>
                     ) : (

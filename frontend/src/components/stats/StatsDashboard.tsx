@@ -94,11 +94,6 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
       {/* 2. Top Metric Cards */}
       <StreakWidget stats={stats} />
 
-      <BandTrendChart
-        data={(stats?.band_trends || []).filter((b) => period === 'all' || filteredTrends.some((t) => t.date === b.date))}
-        typeBands={stats?.type_bands || {}}
-        avgBand={stats?.avg_band ?? null}
-      />
 
       {/* 3. 2대 통합 꺾은선 차트 그리드 */}
       <div className="grid grid-cols-1 gap-6">
@@ -117,6 +112,12 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
         {/* GitHub Consistency Heatmap */}
         <ActivityHeatmap dailyActivity={stats?.daily_activity || {}} />
       </div>
+
+      <BandTrendChart
+        data={(stats?.band_trends || []).filter((b) => period === 'all' || filteredTrends.some((t) => t.date === b.date))}
+        typeBands={stats?.type_bands || {}}
+        avgBand={stats?.avg_band ?? null}
+      />
 
       {/* 6. Top Mistake Subcategories & Remedial Examples */}
       <div className="bg-white dark:bg-[#202020] rounded-2xl border border-stone-200/80 dark:border-[#2e2e2e] p-6 shadow-xs space-y-4 transition-colors">
