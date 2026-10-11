@@ -9,13 +9,13 @@ import {
   PenLine 
 } from 'lucide-react';
 
-interface DiaryCalendarProps {
+interface EssayCalendarProps {
   stats: StatsResponse | null;
   onSelectDate: (date: string) => void;
   currentDate: string;
 }
 
-export const DiaryCalendar: React.FC<DiaryCalendarProps> = ({
+export const EssayCalendar: React.FC<EssayCalendarProps> = ({
   stats,
   onSelectDate,
   currentDate,

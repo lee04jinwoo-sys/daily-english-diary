@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("daily-english-diary")
+logger = logging.getLogger("daily-english-essay")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,4 +46,4 @@ app.include_router(stats.router)
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "service": "daily-english-diary", "version": "1.0.0"}
+    return {"status": "ok", "service": "daily-english-essay", "version": "1.0.0"}

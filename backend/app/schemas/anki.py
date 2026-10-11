@@ -5,26 +5,22 @@ CardType = Literal["sentence", "vocab"]
 
 class SentenceCardRequest(BaseModel):
     sentence: str = Field(..., description="English sentence")
-    translation: str = Field(default="", description="Korean translation / explanation")
-    deck_name: str = Field(default="1. Language::1.1. English::Sentence")
-    model_name: str = Field(default="English Sentence")
-    diary_date: Optional[str] = Field(default="")
+    translation: str = Field(default="", description="Natural Korean translation only (Anki Manager rule)")
 
 class VocabCardRequest(BaseModel):
     word: str = Field(..., description="English word or idiom")
     meaning: str = Field(default="", description="Korean meaning")
     pos: Optional[str] = Field(default="", description="Part of speech")
-    synonyms: Optional[str] = Field(default="", description="Synonyms")
-    example: Optional[str] = Field(default="", description="Example sentence")
-    explanation: Optional[str] = Field(default="", description="Usage nuance/explanation")
-    deck_name: str = Field(default="1. Language::1.1. English::Vocabulary")
-    model_name: str = Field(default="English Vocabulary")
-    diary_date: Optional[str] = Field(default="")
+    # Accepted for compatibility but not forwarded: the Anki Manager gateway writes
+    # example and explanation under its own rules and always leaves synonyms empty.
+    synonyms: Optional[str] = Field(default="", description="Ignored")
+    example: Optional[str] = Field(default="", description="Ignored")
+    explanation: Optional[str] = Field(default="", description="Ignored")
 
 class CardPreviewRequest(BaseModel):
     card_type: CardType
     text: str = Field(..., description="Sentence or word to make into card")
-    context: Optional[str] = Field(default="", description="Diary context or correction info")
+    context: Optional[str] = Field(default="", description="Essay context or correction info")
 
 class CardPreviewResponse(BaseModel):
     card_type: CardType

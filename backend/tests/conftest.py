@@ -13,7 +13,7 @@ def anyio_backend():
 
 @pytest.fixture
 async def fresh_db(tmp_path, monkeypatch):
-    """Point the app at an empty temporary database so tests never touch data/diary.db."""
+    """Point the app at an empty temporary database so tests never touch data/essay.db."""
     db_path = tmp_path / "test.db"
     monkeypatch.setattr(settings, "DATABASE_PATH", db_path)
     await init_db()

@@ -14,7 +14,7 @@ import { Header, AppView } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { GrammarlyEditor } from './components/editor/GrammarlyEditor';
 import { AnkiCardModal } from './components/anki/AnkiCardModal';
-import { DiaryCalendar } from './components/calendar/DiaryCalendar';
+import { EssayCalendar } from './components/calendar/EssayCalendar';
 import { StatsDashboard } from './components/stats/StatsDashboard';
 import { TopicPicker } from './components/topic/TopicPicker';
 import confetti from 'canvas-confetti';
@@ -330,7 +330,7 @@ export function App() {
         )}
 
         {activeView === 'calendar' && (
-          <DiaryCalendar
+          <EssayCalendar
             stats={stats}
             onSelectDate={handleSelectDate}
             currentDate={currentEssay?.date ?? ''}

@@ -27,7 +27,7 @@ B2~C1 학습자를 위한 영어 **논증 에세이** 연습 앱입니다. 원�
 ## 🚀 빠른 시작 (Quick Start)
 
 ### 1) 원클릭 실행 스크립트
-터미널에서 아래 명령을 실행하거나, Finder에서 `DailyEnglishDiary.command`를 더블클릭합니다:
+터미널에서 아래 명령을 실행하거나, Finder에서 `DailyEnglishEssay.command`를 더블클릭합니다:
 ```bash
 cd ~/Desktop/Projects/daily-english-diary
 ./start.sh
@@ -56,7 +56,7 @@ npm run dev
 cd backend
 .venv/bin/python -m pytest -q
 ```
-- 테스트는 임시 DB를 쓰며 `data/diary.db`를 건드리지 않습니다.
+- 테스트는 임시 DB를 쓰며 `data/essay.db`를 건드리지 않습니다.
 
 ---
 
@@ -64,5 +64,5 @@ cd backend
 
 - **Backend**: Python 3.11+, FastAPI (Lifespan), Pydantic v2, Google GenAI SDK (`google-genai`), `aiosqlite`, `gTTS`, `requests`, `python-dotenv`
 - **Frontend**: React 19, TypeScript (Strict), Vite, Tailwind CSS, Lucide React, Canvas Confetti
-- **Database**: SQLite (`data/diary.db`, `essays` / `essay_suggestions` 테이블. 예전 `diaries` 테이블은 건드리지 않고 남겨둠). `ESSAY_DB_PATH`로 경로 변경 가능
+- **Database**: SQLite (`data/essay.db` — 예전 `diary.db`는 시작 시 자동으로 이름이 바뀜, `essays` / `essay_suggestions` 테이블. 예전 `diaries` 테이블은 건드리지 않고 남겨둠). `ESSAY_DB_PATH`로 경로 변경 가능
 - **Integration**: AnkiConnect (`http://localhost:8765`)

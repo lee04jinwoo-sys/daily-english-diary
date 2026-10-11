@@ -1,57 +1,30 @@
 import requests
 import subprocess
-import io
-import os
 import re
-import html
-import random
-import base64
-import uuid
 import logging
 from typing import Optional, Dict, Any, List
-import gtts
-from google.cloud import texttospeech
 from app.core.config import settings
 from app.schemas.anki import AnkiStatusResponse, AnkiActionResponse, SentenceCardRequest, VocabCardRequest
 
 logger = logging.getLogger(__name__)
 
-# Anki Manager compatible Chirp3-HD Voice List (10 High-Definition Neural Voices)
-VOICE_LIST = [
-    "en-US-Chirp3-HD-Vindemiatrix",
-    "en-US-Chirp3-HD-Achernar",
-    "en-US-Chirp3-HD-Schedar",
-    "en-US-Chirp3-HD-Alnilam",
-    "en-US-Chirp3-HD-Algenib",
-    "en-US-Chirp3-HD-Autonoe",
-    "en-GB-Chirp3-HD-Aoede",
-    "en-GB-Chirp3-HD-Umbriel",
-    "en-AU-Chirp3-HD-Kore",
-    "en-AU-Chirp3-HD-Enceladus"
-]
+# Anki Manager card rules (config.py NOTE_COMPLETOR_SYS_INSTRUCT) — the gateway applies them;
+# these constants only shape what we send and how we pre-check duplicates.
+SENTENCE_DECK, SENTENCE_MODEL = "1. Language::1.1. English::Sentence", "English Sentence"
+VOCAB_DECK, VOCAB_MODEL = "1. Language::1.1. English::Vocabulary", "English Vocabulary"
+ALLOWED_POS = {"n", "v", "adj", "adv", "idiom"}
+CARD_TAG = "daily-english-essay"
 
-def clean_text_for_tts(text: str) -> str:
-    """Removes HTML tags and normalizes quotes for clean TTS pronunciation."""
-    if not text:
-        return ""
-    text = html.unescape(text)
-    text = text.replace('‘', "'").replace('’', "'").replace('“', '"').replace('”', '"')
-    return re.sub(r'<.*?>', '', text).strip()
+
+def normalize_meaning(meaning: str) -> str:
+    """Anki Manager rule: meanings are comma-separated, never slash-separated."""
+    parts = [p.strip() for p in re.split(r"\s*/\s*", (meaning or "").strip()) if p.strip()]
+    return ", ".join(parts)
+
 
 class AnkiService:
     def __init__(self):
         self.url = settings.ANKI_URL
-        self._tts_client: Optional[texttospeech.TextToSpeechClient] = None
-
-    @property
-    def tts_client(self) -> Optional[texttospeech.TextToSpeechClient]:
-        if self._tts_client is None:
-            try:
-                self._tts_client = texttospeech.TextToSpeechClient()
-            except Exception as e:
-                logger.warning(f"GCP TextToSpeechClient initialization failed (will fallback to gTTS): {e}")
-                self._tts_client = None
-        return self._tts_client
 
     def invoke(self, action: str, **params) -> Any:
         """Invokes an action on AnkiConnect via HTTP POST."""
@@ -78,69 +51,6 @@ class AnkiService:
         except Exception:
             return False
 
-    def generate_gcp_tts(self, text: str) -> str:
-        """
-        Generates ultra-high-fidelity Chirp3-HD native voice audio using Google Cloud TTS.
-        Picks randomly from US, GB, AU native speakers with 1.1x natural speaking rate.
-        """
-        clean = clean_text_for_tts(text)
-        if not clean or not self.tts_client:
-            return ""
-
-        try:
-            selected_voice = random.choice(VOICE_LIST)
-            lang_code = "-".join(selected_voice.split("-")[:2])
-            synthesis_input = texttospeech.SynthesisInput(text=clean)
-            voice = texttospeech.VoiceSelectionParams(
-                language_code=lang_code,
-                name=selected_voice
-            )
-            audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.MP3,
-                speaking_rate=1.1
-            )
-
-            res = self.tts_client.synthesize_speech(
-                input=synthesis_input,
-                voice=voice,
-                audio_config=audio_config
-            )
-
-            filename = f"anki_gcp_{selected_voice}_{uuid.uuid4().hex[:8]}.mp3"
-            b64_audio = base64.b64encode(res.audio_content).decode("utf-8")
-            self.invoke("storeMediaFile", filename=filename, data=b64_audio)
-            logger.info(f"Generated Chirp3-HD audio ({selected_voice}): {filename}")
-            return f"[sound:{filename}]"
-
-        except Exception as e:
-            logger.warning(f"GCP Chirp3-HD TTS failed, falling back to gTTS: {e}")
-            return ""
-
-    def generate_and_store_gtts(self, text: str) -> str:
-        """Generates gTTS MP3 audio (for vocab or fallback), stores it into Anki via storeMediaFile."""
-        clean = clean_text_for_tts(text)
-        if not clean:
-            return ""
-        try:
-            tts = gtts.gTTS(clean, lang="en", tld="com")
-            buf = io.BytesIO()
-            tts.write_to_fp(buf)
-            buf.seek(0)
-            b64_audio = base64.b64encode(buf.read()).decode("utf-8")
-            fname = f"anki_gtts_{uuid.uuid4().hex[:8]}.mp3"
-            self.invoke("storeMediaFile", filename=fname, data=b64_audio)
-            return f"[sound:{fname}]"
-        except Exception as e:
-            logger.warning(f"gTTS audio generation warning for '{text}': {e}")
-            return ""
-
-    def generate_sentence_audio(self, text: str) -> str:
-        """Tries Google Cloud Chirp3-HD first; falls back to gTTS if GCP is unavailable."""
-        sound_tag = self.generate_gcp_tts(text)
-        if not sound_tag:
-            sound_tag = self.generate_and_store_gtts(text)
-        return sound_tag
-
     def _precheck(self, deck: str, model: str, fields: dict, duplicate_msg: str) -> Optional[AnkiActionResponse]:
         """Ask Anki whether the note can be added before spending TTS / Gemini calls on it."""
         try:
@@ -156,122 +66,67 @@ class AnkiService:
             return AnkiActionResponse(success=True, duplicate=True, message=duplicate_msg)
         return AnkiActionResponse(success=False, error=f"카드 추가 불가: {err}")
 
+    def _gateway_add(self, kind: str, payload: dict) -> AnkiActionResponse:
+        """Create the card through the Anki Manager gateway, which owns the card rules
+        (fields, enrichment prompts, zero synonyms, audio, link indexing)."""
+        url = f"{settings.ANKI_GATEWAY_URL}/api/cards/{kind}"
+        try:
+            resp = requests.post(url, json=payload, timeout=60)
+            resp.raise_for_status()
+            body = resp.json()
+        except requests.exceptions.ConnectionError:
+            return AnkiActionResponse(success=False, error="Anki Manager가 실행 중이 아닙니다. Anki Manager를 켜주세요.")
+        except Exception as e:
+            return AnkiActionResponse(success=False, error=f"Anki Manager 카드 추가 오류: {e}")
+        if body.get("duplicate"):
+            return AnkiActionResponse(success=True, duplicate=True, message="이미 Anki에 등록된 카드입니다.")
+        if not body.get("success"):
+            return AnkiActionResponse(success=False, error=body.get("error") or "Anki Manager가 카드를 추가하지 못했습니다.")
+        note_id = body.get("note_id")
+        if note_id:
+            try:
+                self.invoke("addTags", notes=[note_id], tags=CARD_TAG)
+            except Exception as e:
+                logger.warning(f"Tagging note {note_id} failed: {e}")
+        return AnkiActionResponse(success=True, note_id=note_id, message="Anki 카드가 등록되었습니다! (Anki Manager 규칙 적용)")
+
     def add_sentence_card(self, req: SentenceCardRequest) -> AnkiActionResponse:
-        """Adds a sentence card to Anki with Chirp3-HD high-fidelity audio (Anki Manager format)."""
+        """Adds a sentence card via the Anki Manager gateway."""
         if not self.check_connection():
             return AnkiActionResponse(success=False, error="Anki가 실행되어 있지 않습니다. Anki 앱을 켜주세요.")
-
-        clean_sentence = req.sentence.strip()
-        if not clean_sentence:
+        sentence = req.sentence.strip()
+        if not sentence:
             return AnkiActionResponse(success=False, error="문장이 비어있습니다.")
-
-        blocked = self._precheck(req.deck_name, req.model_name, {"문장": clean_sentence, "해설": req.translation.strip()},
+        blocked = self._precheck(SENTENCE_DECK, SENTENCE_MODEL, {"문장": sentence, "해설": req.translation.strip()},
                                  "이미 Anki에 등록된 문장입니다.")
         if blocked:
             return blocked
-
-        # Generate Chirp3-HD (or fallback to gTTS)
-        sound_tag = self.generate_sentence_audio(clean_sentence)
-
-        fields = {
-            "문장": clean_sentence,
-            "해설": req.translation.strip(),
-            "소리": sound_tag
-        }
-
-        # Check actual model fields in Anki
-        try:
-            actual_fields = self.invoke("modelFieldNames", modelName=req.model_name) or []
-            if actual_fields and "해설" not in actual_fields:
-                if len(actual_fields) >= 2:
-                    fields = {actual_fields[0]: clean_sentence, actual_fields[1]: req.translation.strip()}
-                    if len(actual_fields) >= 3:
-                        fields[actual_fields[2]] = sound_tag
-        except Exception:
-            pass
-
-        note = {
-            "deckName": req.deck_name,
-            "modelName": req.model_name,
-            "fields": fields,
-            "tags": ["daily-english-diary"],
-            "options": {"allowDuplicate": False}
-        }
-
-        try:
-            note_id = self.invoke("addNote", note=note)
-            return AnkiActionResponse(success=True, note_id=note_id, message="Anki 문장 카드가 등록되었습니다!")
-        except Exception as e:
-            err_msg = str(e)
-            if "duplicate" in err_msg.lower():
-                return AnkiActionResponse(success=True, duplicate=True, message="이미 Anki에 등록된 문장입니다.")
-            return AnkiActionResponse(success=False, error=f"카드 추가 오류: {err_msg}")
+        return self._gateway_add("sentence", {"sentence": sentence, "translation": req.translation.strip()})
 
     async def add_vocab_card(self, req: VocabCardRequest) -> AnkiActionResponse:
-        """Adds a vocabulary card to Anki (Anki Manager format with gTTS). Auto-enriches with 3-step formula if missing."""
+        """Adds a vocabulary card via the Anki Manager gateway.
+
+        Only word, meaning and POS are sent; the gateway writes example and explanation
+        under its own rules. Synonyms are always empty there.
+        """
         if not self.check_connection():
             return AnkiActionResponse(success=False, error="Anki가 실행되어 있지 않습니다. Anki 앱을 켜주세요.")
-
-        from app.services.gemini_service import normalize_vocab_placeholders, clean_vocab_example, gemini_service
-
-        clean_word = normalize_vocab_placeholders(req.word.strip())
-        if not clean_word:
+        from app.services.gemini_service import normalize_vocab_placeholders
+        word = normalize_vocab_placeholders(req.word.strip())
+        if not word:
             return AnkiActionResponse(success=False, error="단어가 비어있습니다.")
-
-        blocked = self._precheck(req.deck_name, req.model_name, {"단어": clean_word, "뜻": req.meaning.strip()},
-                                 "이미 Anki에 등록된 단어입니다.")
+        meaning = normalize_meaning(req.meaning)
+        blocked = self._precheck(VOCAB_DECK, VOCAB_MODEL, {"단어": word, "뜻": meaning}, "이미 Anki에 등록된 단어입니다.")
         if blocked:
             return blocked
-
-        meaning = req.meaning.strip()
-        pos = req.pos.strip()
-        synonyms = req.synonyms.strip()
-        example = clean_vocab_example(req.example.strip())
-        explanation = req.explanation.strip()
-
-        # If explanation does not have the 3-step formula or is too short, enrich it using Gemini!
-        if not explanation or len(explanation) < 30 or not synonyms:
-            try:
-                enriched = await gemini_service.lookup_word(clean_word, example or meaning)
-                if enriched:
-                    clean_word = enriched.get("word") or clean_word
-                    meaning = meaning or enriched.get("meaning", "")
-                    pos = pos or enriched.get("pos", "idiom")
-                    synonyms = synonyms or enriched.get("synonyms", "")
-                    explanation = enriched.get("explanation") or explanation
-                    if not example:
-                        example = clean_vocab_example(enriched.get("example", ""))
-            except Exception as e:
-                logger.warning(f"Vocab auto-enrichment warning: {e}")
-
-        sound_tag = self.generate_and_store_gtts(clean_word)
-
-        fields = {
-            "단어": clean_word,
-            "뜻": meaning,
-            "품사": pos or "idiom",
-            "유의어": synonyms,
-            "예문": example,
-            "설명": explanation,
-            "소리": sound_tag
-        }
-
-        note = {
-            "deckName": req.deck_name,
-            "modelName": req.model_name,
-            "fields": fields,
-            "tags": ["daily-english-diary", "vocab"],
-            "options": {"allowDuplicate": False}
-        }
-
-        try:
-            note_id = self.invoke("addNote", note=note)
-            return AnkiActionResponse(success=True, note_id=note_id, message="Anki 단어 카드가 등록되었습니다!")
-        except Exception as e:
-            err_msg = str(e)
-            if "duplicate" in err_msg.lower():
-                return AnkiActionResponse(success=True, duplicate=True, message="이미 Anki에 등록된 단어입니다.")
-            return AnkiActionResponse(success=False, error=f"단어 카드 추가 오류: {err_msg}")
+        pos = (req.pos or "").strip().lower()
+        return self._gateway_add("vocab", {
+            "word": word,
+            "meaning": meaning,
+            "pos": pos if pos in ALLOWED_POS else "",
+            "auto_enrich": True,
+            "generate_audio": True,
+        })
 
     def get_status(self) -> AnkiStatusResponse:
         connected = self.check_connection()
@@ -285,8 +140,8 @@ class AnkiService:
         return AnkiStatusResponse(
             connected=connected,
             anki_url=self.url,
-            sentence_deck=settings.DEFAULT_ANKI_SENTENCE_DECK,
-            vocab_deck=settings.DEFAULT_ANKI_VOCAB_DECK,
+            sentence_deck=SENTENCE_DECK,
+            vocab_deck=VOCAB_DECK,
             available_decks=available_decks
         )
 

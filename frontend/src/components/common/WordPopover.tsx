@@ -120,8 +120,6 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
           synonyms: data.synonyms,
           example: data.example,
           explanation: data.explanation,
-          deck_name: '1. Language::1.1. English::Vocabulary',
-          model_name: 'English Vocabulary',
         });
 
         if (res.success) {

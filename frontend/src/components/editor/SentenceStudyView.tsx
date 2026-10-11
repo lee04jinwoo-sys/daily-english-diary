@@ -215,8 +215,6 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
         const res = await api.addSentenceCard({
           sentence: cleanSentence,
           translation: translationText.trim(),
-          deck_name: '1. Language::1.1. English::Sentence',
-          model_name: 'English Sentence',
         });
 
         if (res.success) {

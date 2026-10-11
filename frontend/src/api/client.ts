@@ -106,8 +106,6 @@ export const api = {
   addSentenceCard: (data: {
     sentence: string;
     translation?: string;
-    deck_name?: string;
-    model_name?: string;
   }) =>
     fetchJson<AnkiActionResponse>('/anki/add-sentence', {
       method: 'POST',
@@ -120,8 +118,6 @@ export const api = {
     synonyms?: string;
     example?: string;
     explanation?: string;
-    deck_name?: string;
-    model_name?: string;
   }) =>
     fetchJson<AnkiActionResponse>('/anki/add-vocab', {
       method: 'POST',

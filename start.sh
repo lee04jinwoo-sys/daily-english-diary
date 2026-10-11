@@ -4,7 +4,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
 echo "=================================================="
-echo "      ✍️ Daily English Diary (Grammarly & Anki)   "
+echo "      ✍️ Daily English Essay (AI 첨삭 & Anki)      "
 echo "=================================================="
 
 # Kill any existing processes on ports 8000 and 5173
@@ -29,7 +29,7 @@ open "http://localhost:5173"
 
 cleanup() {
     echo ""
-    echo "🛑 Daily English Diary 서버를 종료합니다..."
+    echo "🛑 Daily English Essay 서버를 종료합니다..."
     kill $BACKEND_PID 2>/dev/null
     kill $FRONTEND_PID 2>/dev/null
     exit 0

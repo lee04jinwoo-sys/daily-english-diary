@@ -1,6 +1,6 @@
 import aiosqlite
 import logging
-from app.core.config import settings
+from app.core.config import resolve_db_path, settings
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 async def init_db() -> None:
+    if settings.DATABASE_PATH.name == "essay.db":
+        resolve_db_path(settings.DATABASE_PATH.parent)
     logger.info(f"Initializing database at {settings.DATABASE_PATH}")
     async with aiosqlite.connect(settings.DATABASE_PATH) as db:
         await db.execute("PRAGMA foreign_keys = ON")

@@ -24,15 +24,11 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
 }) => {
   const [cardType, setCardType] = useState<CardType>(initialCardType);
   const [deckName, setDeckName] = useState<string>('');
-  const [modelName, setModelName] = useState<string>('');
   
   // Fields
   const [front, setFront] = useState('');
   const [meaning, setMeaning] = useState('');
-  const [explanation, setExplanation] = useState('');
-  const [example, setExample] = useState('');
   const [pos, setPos] = useState('');
-  const [synonyms, setSynonyms] = useState('');
 
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,13 +54,9 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
       });
 
       setDeckName(res.deck_name);
-      setModelName(res.model_name);
       setFront(res.front || text);
       setMeaning(res.meaning || '');
-      setExplanation(res.explanation || '');
-      setExample(res.example || '');
       setPos(res.pos || '');
-      setSynonyms(res.synonyms || '');
     } catch (err: any) {
       setErrorMsg(`AI 카드 정보 자동완성 중 오류: ${err.message}`);
     } finally {
@@ -76,10 +68,8 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
     setCardType(newType);
     if (newType === 'sentence') {
       setDeckName('1. Language::1.1. English::Sentence');
-      setModelName('English Sentence');
     } else {
       setDeckName('1. Language::1.1. English::Vocabulary');
-      setModelName('English Vocabulary');
     }
     loadPreview(newType, front, context);
   };
@@ -98,9 +88,8 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
       if (cardType === 'sentence') {
         const res = await api.addSentenceCard({
           sentence: front.trim(),
-          translation: meaning.trim() || explanation.trim(),
-          deck_name: deckName,
-          model_name: modelName,
+          // Anki Manager rule: 해설 holds the Korean translation only, never notes.
+          translation: meaning.trim(),
         });
         if (res.success) {
           onCardAdded(res.duplicate ? '이미 존재하는 문장입니다 (중복 방지)' : 'Anki 문장 카드가 성공적으로 등록되었습니다!');
@@ -111,11 +100,6 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
           word: front.trim(),
           meaning: meaning.trim(),
           pos: pos.trim(),
-          synonyms: synonyms.trim(),
-          example: example.trim(),
-          explanation: explanation.trim(),
-          deck_name: deckName,
-          model_name: modelName,
         });
         if (res.success) {
           onCardAdded(res.duplicate ? '이미 존재하는 단어입니다 (중복 방지)' : 'Anki 단어 카드가 성공적으로 등록되었습니다!');
@@ -143,7 +127,7 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
             <div>
               <h3 className="text-sm font-bold text-stone-900 dark:text-[#f0f0f0]">Anki 플래시카드 등록</h3>
               <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                내용을 확인 및 수정한 후 AnkiConnect로 전송합니다 (gTTS 음성 자동 생성)
+                Anki Manager 규칙으로 등록합니다 (음성 자동 생성)
               </p>
             </div>
           </div>
@@ -190,30 +174,10 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
             </div>
           )}
 
-          {/* Deck Info */}
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <label className="block text-[11px] font-semibold text-stone-500 dark:text-stone-400 mb-1">
-                타겟 덱 (Target Deck)
-              </label>
-              <input
-                type="text"
-                value={deckName}
-                onChange={(e) => setDeckName(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs font-mono text-stone-700 dark:text-stone-300 outline-none focus:border-stone-400 dark:focus:border-[#555555]"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-stone-500 dark:text-stone-400 mb-1">
-                노트 모델 (Note Model)
-              </label>
-              <input
-                type="text"
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-stone-50 dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs font-mono text-stone-700 dark:text-stone-300 outline-none focus:border-stone-400 dark:focus:border-[#555555]"
-              />
-            </div>
+          {/* Destination (fixed by Anki Manager) */}
+          <div className="text-[11px] text-stone-500 dark:text-stone-400 bg-stone-50 dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg px-3 py-2">
+            <span className="font-mono">{deckName || (cardType === 'sentence' ? '1. Language::1.1. English::Sentence' : '1. Language::1.1. English::Vocabulary')}</span>
+            {cardType === 'vocab' && <span> · 예문·설명은 Anki Manager가 자기 규칙으로 생성하고 유의어는 비워 둡니다</span>}
           </div>
 
           {/* Front */}
@@ -224,7 +188,7 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
               </label>
               <span className="flex items-center space-x-1 text-[10px] text-stone-400 dark:text-stone-500">
                 <Volume2 className="w-3 h-3" />
-                <span>gTTS 음성 자동 생성</span>
+                <span>음성 자동 생성</span>
               </span>
             </div>
             <textarea
@@ -239,7 +203,7 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
           {/* Meaning */}
           <div>
             <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
-              뒷면 (한국어 뜻 / 번역)
+              {cardType === 'sentence' ? '해설 (자연스러운 한국어 번역만)' : '뜻 (쉼표로 구분)'}
             </label>
             <input
               type="text"
@@ -250,64 +214,20 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
             />
           </div>
 
-          {/* Vocab extra fields: POS, Synonyms, Example */}
           {cardType === 'vocab' && (
-            <>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
-                    품사 (Part of Speech)
-                  </label>
-                  <input
-                    type="text"
-                    value={pos}
-                    onChange={(e) => setPos(e.target.value)}
-                    placeholder="noun, verb, idiom..."
-                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs text-stone-900 dark:text-stone-100 outline-none focus:border-stone-400 dark:focus:border-[#555555]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
-                    유의어 (Synonyms)
-                  </label>
-                  <input
-                    type="text"
-                    value={synonyms}
-                    onChange={(e) => setSynonyms(e.target.value)}
-                    placeholder="쉼표로 구분"
-                    className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs text-stone-900 dark:text-stone-100 outline-none focus:border-stone-400 dark:focus:border-[#555555]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
-                  예문 (Example Sentence)
-                </label>
-                <textarea
-                  rows={2}
-                  value={example}
-                  onChange={(e) => setExample(e.target.value)}
-                  placeholder="자연스러운 활용 예문..."
-                  className="w-full px-3 py-1.5 bg-white dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs font-serif text-stone-900 dark:text-stone-100 outline-none focus:border-stone-400 dark:focus:border-[#555555] resize-none"
-                />
-              </div>
-            </>
+            <div className="text-xs">
+              <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                품사 (n, v, adj, adv, idiom)
+              </label>
+              <input
+                type="text"
+                value={pos}
+                onChange={(e) => setPos(e.target.value)}
+                placeholder="비워 두면 Anki Manager가 채웁니다"
+                className="w-full px-2.5 py-1.5 bg-white dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs text-stone-900 dark:text-stone-100 outline-none focus:border-stone-400 dark:focus:border-[#555555]"
+              />
+            </div>
           )}
-
-          {/* Explanation */}
-          <div>
-            <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
-              문법 및 뉘앙스 해설 (Explanation)
-            </label>
-            <textarea
-              rows={2}
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-              placeholder="해설 또는 팁..."
-              className="w-full px-3 py-1.5 bg-white dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg text-xs outline-none focus:border-stone-400 dark:focus:border-[#555555] resize-none text-stone-600 dark:text-stone-300"
-            />
-          </div>
 
           {/* Action Footer */}
           <div className="pt-3 border-t border-stone-100 dark:border-[#2f2f2f] flex items-center justify-between">
