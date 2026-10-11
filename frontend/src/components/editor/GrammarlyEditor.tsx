@@ -17,8 +17,6 @@ import {
   Eye, 
   Copy, 
   Check,
-  CheckCircle2,
-  Clock,
   Loader2,
   Timer,
   Pause
@@ -35,8 +33,6 @@ interface GrammarlyEditorProps {
   isReviewing: boolean;
   reviewResult: ReviewResponse | null;
   suggestions: SuggestionItem[];
-  onApplySuggestion: (suggestion: SuggestionItem) => void;
-  onDismissSuggestion: (id: string) => void;
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
   onShowToast: (msg: string) => void;
 }
@@ -52,8 +48,6 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   isReviewing,
   reviewResult,
   suggestions,
-  onApplySuggestion,
-  onDismissSuggestion,
   onOpenAnkiModal,
   onShowToast,
 }) => {
@@ -86,7 +80,6 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
         onShowToast(`문장별 대조를 만들지 못했습니다: ${e.message}`);
       });
   }, [activeTab, reviewResult, storedPairs.length, lazyPairs, pairsState, essay.id, onShowToast]);
-  const [suggestionFilter, setSuggestionFilter] = useState<'pending' | 'applied'>('pending');
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [savingVocabIndex, setSavingVocabIndex] = useState<number | null>(null);
@@ -266,12 +259,25 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   }, [reviewResult, suggestions.length]);
 
   // Filtered suggestions for side panel (strictly matching current content)
-  const pendingSuggestions = suggestions.filter(
-    (s) => !s.is_applied && content.includes(s.original_phrase)
-  );
-  const appliedSuggestions = suggestions.filter(
-    (s) => s.is_applied && content.includes(s.suggested_phrase)
-  );
+  // Corrections are a record of what was wrong: they are never applied to the text or hidden.
+  // Highlights appear only where the original phrase is still in the text.
+  const pendingSuggestions = suggestions.filter((s) => content.includes(s.original_phrase));
+
+  // The learner's whole sentence (as reviewed) with one fix applied, for sentence cards.
+  const sentenceForCard = (sg: SuggestionItem): string => {
+    const text = reviewResult?.original_text || '';
+    if (sg.start_idx < 0 || text.slice(sg.start_idx, sg.end_idx) !== sg.original_phrase) return sg.suggested_phrase;
+    const re = /[^.!?\n]+[.!?]*/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      const start = m.index;
+      const end = start + m[0].length;
+      if (sg.start_idx >= start && sg.end_idx <= end) {
+        return (text.slice(start, sg.start_idx) + sg.suggested_phrase + text.slice(sg.end_idx, end)).trim();
+      }
+    }
+    return sg.suggested_phrase;
+  };
 
   // Render Clean Interactive Document with Grammarly Highlights
   const renderInteractiveDocument = () => {
@@ -353,7 +359,6 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             setActiveSuggestionId(s.id);
-            setSuggestionFilter('pending');
             const cardEl = document.getElementById(`suggestion-card-${s.id}`);
             if (cardEl) {
               cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -465,7 +470,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                       <div className="flex items-center space-x-1.5">
                         <Eye className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                         <span>
-                          인라인 첨삭 하이라이트 뷰 {pendingSuggestions.length > 0 && `(${pendingSuggestions.length}개 미적용)`}
+                          인라인 첨삭 하이라이트 뷰 {pendingSuggestions.length > 0 && `(${pendingSuggestions.length}곳)`}
                         </span>
                       </div>
                       {pendingSuggestions.length > 0 && (
@@ -616,99 +621,35 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             ref={suggestionListRef}
             className="w-96 border-l border-[#e9e8e4] dark:border-[#2a2a2a] bg-[#f7f6f3]/60 dark:bg-[#1c1c1c]/90 overflow-y-auto p-4 flex flex-col space-y-3 transition-colors"
           >
-            {/* Filter Tabs: Pending vs Applied */}
-            <div className="flex items-center justify-between pb-2 border-b border-[#e9e8e4] dark:border-[#2f2f2f]">
-              <div className="flex items-center bg-stone-200/80 dark:bg-[#282828] p-0.5 rounded-lg text-xs font-medium">
-                <button
-                  onClick={() => setSuggestionFilter('pending')}
-                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-all ${
-                    suggestionFilter === 'pending'
-                      ? 'bg-white dark:bg-[#383838] text-stone-900 dark:text-white font-bold shadow-xs'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-                  }`}
-                >
-                  <Clock className="w-3 h-3" />
-                  <span>미적용 ({pendingSuggestions.length})</span>
-                </button>
-
-                <button
-                  onClick={() => setSuggestionFilter('applied')}
-                  className={`flex items-center space-x-1 px-2.5 py-1 rounded-md transition-all ${
-                    suggestionFilter === 'applied'
-                      ? 'bg-white dark:bg-[#383838] text-emerald-800 dark:text-emerald-300 font-bold shadow-xs'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-                  }`}
-                >
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  <span>적용 완료 ({appliedSuggestions.length})</span>
-                </button>
+            <div className="pb-2 border-b border-[#e9e8e4] dark:border-[#2f2f2f]">
+              <div className="text-xs font-semibold text-stone-800 dark:text-stone-200">교정 기록 ({suggestions.length})</div>
+              <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                원문은 그대로 남습니다. 고쳐 쓰기에서 직접 다시 써 보세요.
               </div>
             </div>
 
-            {/* Suggestions List */}
-            {suggestionFilter === 'pending' ? (
-              pendingSuggestions.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-400 dark:text-stone-500 space-y-2">
-                  <CheckCircle className="w-8 h-8 text-emerald-500/80 dark:text-emerald-400/80" />
-                  <div className="text-xs font-medium text-stone-600 dark:text-stone-300">
-                    {reviewResult ? '모든 제안을 적용하셨습니다! 🎉' : '에세이 작성 후 [AI 첨삭 받기]를 눌러보세요.'}
-                  </div>
-                  {appliedSuggestions.length > 0 && (
-                    <button
-                      onClick={() => setSuggestionFilter('applied')}
-                      className="text-xs text-blue-600 dark:text-blue-400 underline font-medium"
-                    >
-                      적용 완료된 제안 {appliedSuggestions.length}개 확인하기
-                    </button>
-                  )}
+            {suggestions.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-400 dark:text-stone-500 space-y-2">
+                <CheckCircle className="w-8 h-8 text-emerald-500/80 dark:text-emerald-400/80" />
+                <div className="text-xs font-medium text-stone-600 dark:text-stone-300">
+                  {reviewResult ? '교정할 부분이 없습니다.' : '에세이 작성 후 [AI 첨삭 받기]를 눌러보세요.'}
                 </div>
-              ) : (
-                pendingSuggestions.map((item) => (
-                  <div key={item.id} id={`suggestion-card-${item.id}`}>
-                    <SuggestionCard
-                      suggestion={item}
-                      isActive={activeSuggestionId === item.id}
-                      onSelect={() => {
-                        setActiveSuggestionId(item.id);
-                        const highlightEl = document.getElementById(`highlight-${item.id}`);
-                        if (highlightEl) {
-                          highlightEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                        }
-                      }}
-                      onApply={(s) => {
-                        onApplySuggestion(s);
-                        setActiveSuggestionId(null);
-                      }}
-                      onDismiss={(id) => {
-                        onDismissSuggestion(id);
-                        if (activeSuggestionId === id) setActiveSuggestionId(null);
-                      }}
-                      onOpenAnkiModal={onOpenAnkiModal}
-                    />
-                  </div>
-                ))
-              )
+              </div>
             ) : (
-              appliedSuggestions.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-400 dark:text-stone-500 space-y-2">
-                  <div className="text-xs font-medium text-stone-600 dark:text-stone-300">
-                    아직 적용된 제안이 없습니다.
-                  </div>
+              suggestions.map((item) => (
+                <div key={item.id} id={`suggestion-card-${item.id}`}>
+                  <SuggestionCard
+                    suggestion={item}
+                    isActive={activeSuggestionId === item.id}
+                    onSelect={() => {
+                      setActiveSuggestionId(item.id);
+                      document.getElementById(`highlight-${item.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }}
+                    sentenceForCard={sentenceForCard(item)}
+                    onOpenAnkiModal={onOpenAnkiModal}
+                  />
                 </div>
-              ) : (
-                appliedSuggestions.map((item) => (
-                  <div key={item.id} id={`suggestion-card-${item.id}`}>
-                    <SuggestionCard
-                      suggestion={item}
-                      isActive={activeSuggestionId === item.id}
-                      onSelect={() => setActiveSuggestionId(item.id)}
-                      onApply={onApplySuggestion}
-                      onDismiss={onDismissSuggestion}
-                      onOpenAnkiModal={onOpenAnkiModal}
-                    />
-                  </div>
-                ))
-              )
+              ))
             )}
           </div>
         </div>

@@ -173,38 +173,6 @@ export function App() {
     }
   };
 
-  // Grammarly One-Click Apply Engine with is_applied preservation
-  const handleApplySuggestion = (suggestion: SuggestionItem) => {
-    const origPhrase = suggestion.original_phrase;
-    const repPhrase = suggestion.suggested_phrase;
-
-    let newContent = content;
-    const start = suggestion.start_idx;
-    const end = suggestion.end_idx;
-
-    if (start >= 0 && end > start && content.slice(start, end) === origPhrase) {
-      newContent = content.slice(0, start) + repPhrase + content.slice(end);
-    } else {
-      newContent = content.replace(origPhrase, repPhrase);
-    }
-
-    const delta = repPhrase.length - (end - start);
-
-    setSuggestions((prev) =>
-      prev.map((s) => {
-        if (s.id === suggestion.id) return { ...s, is_applied: true };
-        if (s.start_idx > start) return { ...s, start_idx: s.start_idx + delta, end_idx: s.end_idx + delta };
-        return s;
-      })
-    );
-    handleContentChange(newContent);
-    showToast(`"${repPhrase}"으로 교정되었습니다.`);
-  };
-
-  const handleDismissSuggestion = (id: string) => {
-    setSuggestions((prev) => prev.filter((s) => s.id !== id));
-  };
-
   const handleStartEssay = async (topic: Topic | null, customPrompt?: string) => {
     try {
       const essay = topic
@@ -322,8 +290,6 @@ export function App() {
             isReviewing={isReviewing}
             reviewResult={reviewResult}
             suggestions={suggestions}
-            onApplySuggestion={handleApplySuggestion}
-            onDismissSuggestion={handleDismissSuggestion}
             onOpenAnkiModal={handleOpenAnkiModal}
             onShowToast={showToast}
           />

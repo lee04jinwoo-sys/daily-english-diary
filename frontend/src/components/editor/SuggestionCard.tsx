@@ -1,13 +1,13 @@
 import React from 'react';
 import { SuggestionItem, CardType } from '../../types/essay';
-import { Check, X, BookmarkPlus, CheckCircle2 } from 'lucide-react';
+import { BookmarkPlus } from 'lucide-react';
 
 interface SuggestionCardProps {
   suggestion: SuggestionItem;
   isActive: boolean;
   onSelect: () => void;
-  onApply: (suggestion: SuggestionItem) => void;
-  onDismiss: (suggestionId: string) => void;
+  /** The learner's whole sentence with this fix applied (sentence cards must be complete sentences). */
+  sentenceForCard: string;
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
 }
 
@@ -15,8 +15,7 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
   suggestion,
   isActive,
   onSelect,
-  onApply,
-  onDismiss,
+  sentenceForCard,
   onOpenAnkiModal,
 }) => {
   const getCategoryBadge = () => {
@@ -67,13 +66,9 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
   };
 
   const badge = getCategoryBadge();
-  const isApplied = !!suggestion.is_applied;
 
   const getCardStyle = () => {
     if (!isActive) {
-      if (isApplied) {
-        return 'bg-emerald-50/30 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-900/40 hover:border-emerald-300';
-      }
       return 'bg-white/80 dark:bg-[#242424] hover:bg-white dark:hover:bg-[#2a2a2a] border-[#e9e8e4] dark:border-[#333333] hover:border-stone-300 dark:hover:border-stone-600 shadow-xs';
     }
 
@@ -104,25 +99,7 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
               {suggestion.subcategory}
             </span>
           )}
-          {isApplied && (
-            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-[10px] font-bold">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-300" />
-              <span>적용 완료</span>
-            </span>
-          )}
         </div>
-        {!isApplied && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDismiss(suggestion.id);
-            }}
-            className="text-[#a8a7a1] dark:text-[#666666] hover:text-[#37352f] dark:hover:text-[#e0e0e0] p-1 rounded-md transition-colors"
-            title="제안 무시"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
 
       {/* Before & After Phrasing */}
@@ -153,10 +130,10 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onOpenAnkiModal('sentence', suggestion.suggested_phrase, suggestion.explanation);
+              onOpenAnkiModal('sentence', sentenceForCard, suggestion.explanation);
             }}
             className="flex items-center space-x-1 text-[11px] text-[#55534e] dark:text-[#a0a0a0] hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 px-2 py-1 rounded transition-colors"
-            title="이 문장을 Anki 문장 덱에 추가"
+            title={`교정된 문장을 Anki 문장 덱에 추가: ${sentenceForCard}`}
           >
             <BookmarkPlus className="w-3 h-3 text-blue-600 dark:text-blue-400" />
             <span>문장 Anki</span>
@@ -175,24 +152,6 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
           </button>
         </div>
 
-        {/* Apply Accept Button or Applied Indicator */}
-        {isApplied ? (
-          <span className="flex items-center space-x-1 text-emerald-700 dark:text-emerald-300 text-xs font-semibold px-2 py-1 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg border border-emerald-200 dark:border-emerald-800">
-            <Check className="w-3.5 h-3.5" />
-            <span>적용됨</span>
-          </span>
-        ) : (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onApply(suggestion);
-            }}
-            className="flex items-center space-x-1 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white dark:text-stone-900 active:scale-95 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xs transition-all"
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>적용 (Accept)</span>
-          </button>
-        )}
       </div>
     </div>
   );
