@@ -164,3 +164,56 @@ def test_prompt_asks_for_unique_phrases_and_specific_patterns():
     src = inspect.getsource(gemini_service.review_essay)
     assert "한 번만" in src
     assert "구체적" in src
+
+
+@pytest.mark.anyio
+async def test_concurrent_sentence_pair_requests_generate_once(client, monkeypatch):
+    import asyncio
+    essay_id, _, rec = await _reviewed_essay(client, monkeypatch, PAIRS, PAIRS)
+    r1, r2 = await asyncio.gather(
+        client.post(f"/api/essays/{essay_id}/sentence-pairs"),
+        client.post(f"/api/essays/{essay_id}/sentence-pairs"),
+    )
+    assert r1.status_code == r2.status_code == 200
+    assert r1.json() == r2.json()
+    assert len(rec.calls) == 2  # review + exactly one pairs generation
+
+
+class _RawRecorder:
+    """Fake client returning raw response texts in order."""
+
+    def __init__(self, *texts):
+        self.texts = list(texts)
+        self.calls = 0
+        rec = self
+
+        class Models:
+            async def generate_content(self, *a, **k):
+                rec.calls += 1
+                text = rec.texts.pop(0)
+
+                class R:
+                    pass
+                R.text = text
+                return R()
+
+        class Aio:
+            models = Models()
+        self.aio = Aio()
+
+
+@pytest.mark.anyio
+async def test_malformed_json_is_retried_once(monkeypatch):
+    rec = _RawRecorder('{"pairs": [ {"index": 1, "native": "x" "broken"', json.dumps({"ok": 1}))
+    monkeypatch.setattr(gemini_service, "_client", rec)
+    assert await gemini_service._generate_json("p", 0.2) == {"ok": 1}
+    assert rec.calls == 2
+
+
+@pytest.mark.anyio
+async def test_malformed_json_twice_raises(monkeypatch):
+    rec = _RawRecorder("{bad", "{still bad")
+    monkeypatch.setattr(gemini_service, "_client", rec)
+    with pytest.raises(json.JSONDecodeError):
+        await gemini_service._generate_json("p", 0.2)
+    assert rec.calls == 2

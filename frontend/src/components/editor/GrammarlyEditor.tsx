@@ -701,7 +701,17 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
       {/* 2. Tab: Sentence Study View (Shadowing Player Style 1:1) */}
       {activeTab === 'sentence' && (
         <div className="flex-1 overflow-y-auto px-10 py-6 max-w-4xl mx-auto w-full">
-          {pairsState === 'loading' ? (
+          {pairsState === 'error' && reviewResult ? (
+            <div className="flex flex-col items-center justify-center py-24 space-y-3">
+              <div className="text-xs text-red-600 dark:text-red-400">문장별 대조를 만들지 못했습니다.</div>
+              <button
+                onClick={() => setPairsState('idle')}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-stone-200 dark:border-[#3a3a3a] text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-[#2c2c2c]"
+              >
+                다시 시도
+              </button>
+            </div>
+          ) : pairsState === 'loading' ? (
             <div className="flex flex-col items-center justify-center py-24 text-stone-400 dark:text-stone-500 space-y-3">
               <Loader2 className="w-6 h-6 animate-spin" />
               <div className="text-xs">문장별 대조를 만드는 중입니다 (처음 한 번만)...</div>

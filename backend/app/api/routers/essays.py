@@ -1,3 +1,5 @@
+import asyncio
+from collections import defaultdict
 from typing import List
 from fastapi import APIRouter, HTTPException, status
 
@@ -7,6 +9,9 @@ from app.services.gemini_service import GeminiError, gemini_service
 from app.services.essay_service import essay_service
 
 router = APIRouter(prefix="/api/essays", tags=["Essays"])
+
+# One generation per essay at a time: a second request waits and then reads the stored pairs.
+_pair_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 def _not_found(essay_id: str) -> HTTPException:
@@ -70,6 +75,11 @@ async def get_suggestions(essay_id: str):
 @router.post("/{essay_id}/sentence-pairs", response_model=List[SentencePair])
 async def sentence_pairs(essay_id: str):
     """Sentence-by-sentence study pairs, generated on first request and stored with the review."""
+    async with _pair_locks[essay_id]:
+        return await _get_or_create_pairs(essay_id)
+
+
+async def _get_or_create_pairs(essay_id: str) -> List[SentencePair]:
     essay = await essay_service.get(essay_id)
     if not essay:
         raise _not_found(essay_id)

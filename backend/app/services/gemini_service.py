@@ -171,16 +171,23 @@ class GeminiService:
         return self._client
 
     async def _generate_json(self, prompt: str, temperature: float, thinking_budget: int = 0) -> dict:
-        response = await self.client.aio.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=temperature,
-                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
+        """Call Gemini in JSON mode; a response that is not valid JSON is retried once."""
+        for attempt in range(2):
+            response = await self.client.aio.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=temperature,
+                    thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
+                )
             )
-        )
-        return json.loads(response.text or "{}")
+            try:
+                return json.loads(response.text or "{}")
+            except json.JSONDecodeError:
+                if attempt == 1:
+                    raise
+                logger.warning("Gemini returned malformed JSON; retrying once")
 
     def _find_exact_offsets(self, text: str, phrase: str, existing_spans: List[tuple]) -> tuple[int, int]:
         """Locates the exact start and end char offsets of a phrase in text without overlapping."""
