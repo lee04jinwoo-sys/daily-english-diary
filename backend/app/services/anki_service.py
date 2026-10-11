@@ -141,6 +141,21 @@ class AnkiService:
             sound_tag = self.generate_and_store_gtts(text)
         return sound_tag
 
+    def _precheck(self, deck: str, model: str, fields: dict, duplicate_msg: str) -> Optional[AnkiActionResponse]:
+        """Ask Anki whether the note can be added before spending TTS / Gemini calls on it."""
+        try:
+            result = self.invoke("canAddNotesWithErrorDetail", notes=[{
+                "deckName": deck, "modelName": model, "fields": fields,
+                "options": {"allowDuplicate": False}}])[0]
+        except Exception:
+            return None  # older AnkiConnect: fall through and let addNote decide
+        if result.get("canAdd"):
+            return None
+        err = result.get("error", "")
+        if "duplicate" in err.lower():
+            return AnkiActionResponse(success=True, duplicate=True, message=duplicate_msg)
+        return AnkiActionResponse(success=False, error=f"카드 추가 불가: {err}")
+
     def add_sentence_card(self, req: SentenceCardRequest) -> AnkiActionResponse:
         """Adds a sentence card to Anki with Chirp3-HD high-fidelity audio (Anki Manager format)."""
         if not self.check_connection():
@@ -149,6 +164,11 @@ class AnkiService:
         clean_sentence = req.sentence.strip()
         if not clean_sentence:
             return AnkiActionResponse(success=False, error="문장이 비어있습니다.")
+
+        blocked = self._precheck(req.deck_name, req.model_name, {"문장": clean_sentence, "해설": req.translation.strip()},
+                                 "이미 Anki에 등록된 문장입니다.")
+        if blocked:
+            return blocked
 
         # Generate Chirp3-HD (or fallback to gTTS)
         sound_tag = self.generate_sentence_audio(clean_sentence)
@@ -197,6 +217,11 @@ class AnkiService:
         clean_word = normalize_vocab_placeholders(req.word.strip())
         if not clean_word:
             return AnkiActionResponse(success=False, error="단어가 비어있습니다.")
+
+        blocked = self._precheck(req.deck_name, req.model_name, {"단어": clean_word, "뜻": req.meaning.strip()},
+                                 "이미 Anki에 등록된 단어입니다.")
+        if blocked:
+            return blocked
 
         meaning = req.meaning.strip()
         pos = req.pos.strip()
