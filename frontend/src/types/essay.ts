@@ -267,4 +267,21 @@ export interface StatsResponse {
   avg_band: number | null;
   band_trends: BandTrendItem[];
   type_bands: Record<string, number>;
+  writing_trends?: WritingTrendItem[];
+}
+
+export type WritingSignal = 'improving' | 'rushed' | 'careful' | 'declining' | 'slower' | 'steady';
+
+// Speed next to accuracy for one reviewed essay with a recorded writing time.
+export interface WritingTrendItem {
+  essay_id: string;
+  date: string;
+  essay_type: EssayType;
+  is_revision: boolean;
+  word_count: number;
+  minutes: number;
+  wpm: number;
+  error_density: number;
+  accuracy_density: number;
+  signal: WritingSignal | null;
 }

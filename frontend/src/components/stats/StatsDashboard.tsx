@@ -6,6 +6,7 @@ import { VolumeChart } from './VolumeChart';
 import { ErrorCategoryChart } from './ErrorCategoryChart';
 import { ActivityHeatmap } from './ActivityHeatmap';
 import { BandTrendChart } from './BandTrendChart';
+import { WritingTrendChart } from './WritingTrendChart';
 import { 
   BarChart2, 
   AlertTriangle, 
@@ -117,6 +118,10 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
         data={(stats?.band_trends || []).filter((b) => period === 'all' || filteredTrends.some((t) => t.date === b.date))}
         typeBands={stats?.type_bands || {}}
         avgBand={stats?.avg_band ?? null}
+      />
+
+      <WritingTrendChart
+        data={(stats?.writing_trends || []).filter((w) => period === 'all' || filteredTrends.some((t) => t.date === w.date))}
       />
 
       {/* 6. Top Mistake Subcategories & Remedial Examples */}

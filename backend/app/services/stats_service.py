@@ -3,17 +3,73 @@ import difflib
 import json
 import re
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import aiosqlite
 
 from app.core.config import settings
-from app.schemas.stats import BandTrendItem, DailyActivity, DailyTrendItem, MistakeSample, StatsResponse
+from app.schemas.stats import (
+    BandTrendItem, DailyActivity, DailyTrendItem, MistakeSample, StatsResponse, WritingTrendItem,
+)
 from app.services.essay_service import current_streak
 
 
 def _avg(xs: List[float], digits: int = 2) -> float:
     return round(sum(xs) / len(xs), digits) if xs else 0.0
+
+
+# Changes smaller than these are treated as noise when comparing an essay with its baseline.
+WPM_NOISE = 0.10          # 10% of the baseline speed
+ACCURACY_NOISE = 0.15     # 15% of the baseline must-fix density ...
+ACCURACY_NOISE_FLOOR = 0.5  # ... but at least 0.5 per 100 words
+BASELINE_ESSAYS = 3
+MIN_WRITING_SECONDS = 60
+
+
+def writing_signal(base_wpm: Optional[float], base_acc: Optional[float], wpm: float, acc: float) -> Optional[str]:
+    """How an essay compares with the baseline in speed (wpm) and must-fix errors per 100 words (acc)."""
+    if base_wpm is None or base_acc is None:
+        return None
+    faster = wpm > base_wpm * (1 + WPM_NOISE)
+    slower = wpm < base_wpm * (1 - WPM_NOISE)
+    band = max(base_acc * ACCURACY_NOISE, ACCURACY_NOISE_FLOOR)
+    more_errors = acc > base_acc + band
+    fewer_errors = acc < base_acc - band
+    if faster:
+        return "rushed" if more_errors else "improving"
+    if slower:
+        return "careful" if fewer_errors else "declining" if more_errors else "slower"
+    if fewer_errors:
+        return "improving"
+    if more_errors:
+        return "declining"
+    return "steady"
+
+
+def _writing_trends(essays, tier_counts) -> List[WritingTrendItem]:
+    items: List[WritingTrendItem] = []
+    baseline: List[WritingTrendItem] = []  # non-revision essays only
+    for e in essays:
+        words, seconds = e["word_count"] or 0, e["writing_seconds"] or 0
+        if not e["review_json"] or words == 0 or seconds < MIN_WRITING_SECONDS:
+            continue
+        tiers = tier_counts[e["id"]]
+        minutes = seconds / 60
+        wpm = words / minutes
+        acc = tiers.get("accuracy", 0) * 100 / words
+        recent = baseline[-BASELINE_ESSAYS:]
+        base_wpm = sum(b.wpm for b in recent) / len(recent) if recent else None
+        base_acc = sum(b.accuracy_density for b in recent) / len(recent) if recent else None
+        item = WritingTrendItem(
+            essay_id=e["id"], date=e["date"], essay_type=e["essay_type"], is_revision=bool(e["revision_of"]),
+            word_count=words, minutes=round(minutes, 1), wpm=round(wpm, 2),
+            error_density=round(sum(tiers.values()) * 100 / words, 2), accuracy_density=round(acc, 2),
+            signal=writing_signal(base_wpm, base_acc, wpm, acc),
+        )
+        items.append(item)
+        if not item.is_revision:
+            baseline.append(item)
+    return items
 
 
 def _sentence_count(text: str) -> int:
@@ -122,6 +178,7 @@ class StatsService:
             daily_trends=daily_trends,
             band_trends=band_trends,
             type_bands={k: _avg(v) for k, v in type_band_lists.items()},
+            writing_trends=_writing_trends(essays, tier_counts),
         )
 
 
