@@ -42,9 +42,9 @@ const SIGNALS: Record<WritingSignal, { label: string; hint: string; className: s
 };
 
 export const WritingTrendChart: React.FC<WritingTrendChartProps> = ({ data }) => {
-  const chartData = data.map((d, i) => {
+  const chartData = data.map((d) => {
     const [, m, day] = d.date.split('-');
-    return { ...d, label: `${i + 1} (${m}/${day})` };
+    return { ...d, label: `${d.number}번 (${m}/${day})` };
   });
 
   return (

@@ -9,7 +9,7 @@ import aiosqlite
 
 from app.core.config import settings
 from app.schemas.stats import (
-    BandTrendItem, DailyActivity, DailyTrendItem, MistakeSample, StatsResponse, WritingTrendItem,
+    BandTrendItem, DailyActivity, EssayTrendItem, MistakeSample, StatsResponse, WritingTrendItem,
 )
 from app.services.essay_service import current_streak
 
@@ -46,7 +46,16 @@ def writing_signal(base_wpm: Optional[float], base_acc: Optional[float], wpm: fl
     return "steady"
 
 
-def _writing_trends(essays, tier_counts) -> List[WritingTrendItem]:
+def essay_numbers(essays) -> Dict[str, int]:
+    """1, 2, 3 ... for essays with text, in the order they were created."""
+    numbers: Dict[str, int] = {}
+    for e in essays:
+        if (e["word_count"] or 0) > 0:
+            numbers[e["id"]] = len(numbers) + 1
+    return numbers
+
+
+def _writing_trends(essays, tier_counts, numbers: Dict[str, int]) -> List[WritingTrendItem]:
     items: List[WritingTrendItem] = []
     baseline: List[WritingTrendItem] = []  # non-revision essays only
     for e in essays:
@@ -61,8 +70,8 @@ def _writing_trends(essays, tier_counts) -> List[WritingTrendItem]:
         base_wpm = sum(b.wpm for b in recent) / len(recent) if recent else None
         base_acc = sum(b.accuracy_density for b in recent) / len(recent) if recent else None
         item = WritingTrendItem(
-            essay_id=e["id"], date=e["date"], essay_type=e["essay_type"], is_revision=bool(e["revision_of"]),
-            word_count=words, minutes=round(minutes, 1), wpm=round(wpm, 2),
+            essay_id=e["id"], number=numbers[e["id"]], date=e["date"], essay_type=e["essay_type"],
+            is_revision=bool(e["revision_of"]), word_count=words, minutes=round(minutes, 1), wpm=round(wpm, 2),
             error_density=round(sum(tiers.values()) * 100 / words, 2), accuracy_density=round(acc, 2),
             signal=writing_signal(base_wpm, base_acc, wpm, acc),
         )
@@ -102,13 +111,11 @@ class StatsService:
             for k, v in sorted(subcats.items(), key=lambda kv: kv[1]["count"], reverse=True)[:6]
         ]
 
-        # Per-day aggregation: several essays can share a date.
-        day_words: Dict[str, int] = defaultdict(int)
-        day_sents: Dict[str, int] = defaultdict(int)
-        day_tiers: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        day_nci: Dict[str, List[float]] = defaultdict(list)
+        # Trends follow writing order: one point per reviewed essay, numbered among essays with text.
+        numbers = essay_numbers(essays)
         activity: Dict[str, DailyActivity] = {}
         band_trends: List[BandTrendItem] = []
+        essay_trends: List[EssayTrendItem] = []
         type_band_lists: Dict[str, List[float]] = defaultdict(list)
         total_words = total_sentences = 0
 
@@ -129,33 +136,26 @@ class StatsService:
             act.best_band = max(band, act.best_band or 0)
             type_band_lists[e["essay_type"]].append(band)
             band_trends.append(BandTrendItem(
-                essay_id=e["id"], date=date, essay_type=e["essay_type"], revision_of=e["revision_of"],
-                overall_band=band, **{k: rubric[k]["band"] for k in ("task_response", "coherence", "lexical", "grammar")},
+                essay_id=e["id"], number=numbers[e["id"]], date=date, essay_type=e["essay_type"],
+                revision_of=e["revision_of"], overall_band=band,
+                **{k: rubric[k]["band"] for k in ("task_response", "coherence", "lexical", "grammar")},
             ))
 
             original = review.get("original_text") or e["content"]
             sents = _sentence_count(original)
             total_sentences += sents
-            day_words[date] += words
-            day_sents[date] += sents
-            for tier, cnt in tier_counts[e["id"]].items():
-                day_tiers[date][tier] += cnt
-            orig_w, corr_w = original.lower().split(), (review.get("corrected_text") or "").lower().split()
-            if orig_w and corr_w:
-                day_nci[date].append(difflib.SequenceMatcher(None, orig_w, corr_w).ratio() * 100)
-
-        daily_trends: List[DailyTrendItem] = []
-        for date in sorted(day_words):
-            w = max(day_words[date], 1)
-            t = day_tiers[date]
+            t = tier_counts[e["id"]]
             err = sum(t.values())
-            daily_trends.append(DailyTrendItem(
-                date=date, word_count=day_words[date], sentence_count=day_sents[date], error_count=err,
-                error_density=round(err / w * 100, 2),
-                accuracy_density=round(t.get("accuracy", 0) / w * 100, 2),
-                idiom_density=round(t.get("idiom", 0) / w * 100, 2),
-                style_density=round(t.get("style", 0) / w * 100, 2),
-                nci=round(_avg(day_nci[date], 1), 1),
+            orig_w, corr_w = original.lower().split(), (review.get("corrected_text") or "").lower().split()
+            nci = difflib.SequenceMatcher(None, orig_w, corr_w).ratio() * 100 if orig_w and corr_w else 0.0
+            essay_trends.append(EssayTrendItem(
+                essay_id=e["id"], number=numbers[e["id"]], date=date, essay_type=e["essay_type"],
+                word_count=words, sentence_count=sents, error_count=err,
+                error_density=round(err / words * 100, 2),
+                accuracy_density=round(t.get("accuracy", 0) / words * 100, 2),
+                idiom_density=round(t.get("idiom", 0) / words * 100, 2),
+                style_density=round(t.get("style", 0) / words * 100, 2),
+                nci=round(nci, 1),
             ))
 
         written = set(activity)
@@ -166,19 +166,19 @@ class StatsService:
             total_words=total_words,
             total_sentences=total_sentences,
             total_errors=len(sugs),
-            avg_error_density=_avg([d.error_density for d in daily_trends]),
-            avg_accuracy_density=_avg([d.accuracy_density for d in daily_trends]),
-            avg_idiom_density=_avg([d.idiom_density for d in daily_trends]),
-            avg_style_density=_avg([d.style_density for d in daily_trends]),
-            avg_nci=_avg([d.nci for d in daily_trends], 1),
+            avg_error_density=_avg([d.error_density for d in essay_trends]),
+            avg_accuracy_density=_avg([d.accuracy_density for d in essay_trends]),
+            avg_idiom_density=_avg([d.idiom_density for d in essay_trends]),
+            avg_style_density=_avg([d.style_density for d in essay_trends]),
+            avg_nci=_avg([d.nci for d in essay_trends], 1),
             avg_band=_avg([b.overall_band for b in band_trends]) if band_trends else None,
             category_counts=dict(category_counts),
             top_subcategories=top_subcategories,
             daily_activity=activity,
-            daily_trends=daily_trends,
+            essay_trends=essay_trends,
             band_trends=band_trends,
             type_bands={k: _avg(v) for k, v in type_band_lists.items()},
-            writing_trends=_writing_trends(essays, tier_counts),
+            writing_trends=_writing_trends(essays, tier_counts, numbers),
         )
 
 

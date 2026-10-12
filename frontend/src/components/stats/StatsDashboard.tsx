@@ -24,21 +24,17 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
   stats,
   onOpenAnkiModal,
 }) => {
-  const [period, setPeriod] = useState<'all' | '30d' | '7d'>('all');
+  // Trends follow writing order, so the period is a number of recent essays, not days.
+  const [period, setPeriod] = useState<'all' | 'last10' | 'last5'>('all');
 
-  // Filter daily trends according to selected period
-  const filteredTrends = useMemo(() => {
-    const raw = stats?.daily_trends || [];
-    if (period === 'all' || raw.length === 0) return raw;
+  const lastNumber = useMemo(
+    () => Math.max(0, ...[...(stats?.essay_trends || []), ...(stats?.band_trends || []), ...(stats?.writing_trends || [])].map((t) => t.number)),
+    [stats],
+  );
+  const inPeriod = (number: number) =>
+    period === 'all' || number > lastNumber - (period === 'last10' ? 10 : 5);
 
-    const today = new Date();
-    const daysLimit = period === '7d' ? 7 : 30;
-    const cutoff = new Date(today);
-    cutoff.setDate(today.getDate() - daysLimit);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-
-    return raw.filter((item) => item.date >= cutoffStr);
-  }, [stats?.daily_trends, period]);
+  const filteredTrends = (stats?.essay_trends || []).filter((t) => inPeriod(t.number));
 
   const topSubcategories = stats?.top_subcategories || [];
 
@@ -67,27 +63,27 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
                 : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
             }`}
           >
-            전체 기간
+            전체
           </button>
           <button
-            onClick={() => setPeriod('30d')}
+            onClick={() => setPeriod('last10')}
             className={`px-3 py-1 text-xs rounded-lg font-medium transition-all ${
-              period === '30d'
+              period === 'last10'
                 ? 'bg-white dark:bg-[#383838] text-stone-900 dark:text-white shadow-2xs font-semibold'
                 : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
             }`}
           >
-            최근 30일
+            최근 10편
           </button>
           <button
-            onClick={() => setPeriod('7d')}
+            onClick={() => setPeriod('last5')}
             className={`px-3 py-1 text-xs rounded-lg font-medium transition-all ${
-              period === '7d'
+              period === 'last5'
                 ? 'bg-white dark:bg-[#383838] text-stone-900 dark:text-white shadow-2xs font-semibold'
                 : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
             }`}
           >
-            최근 7일
+            최근 5편
           </button>
         </div>
       </div>
@@ -115,13 +111,13 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
       </div>
 
       <BandTrendChart
-        data={(stats?.band_trends || []).filter((b) => period === 'all' || filteredTrends.some((t) => t.date === b.date))}
+        data={(stats?.band_trends || []).filter((b) => inPeriod(b.number))}
         typeBands={stats?.type_bands || {}}
         avgBand={stats?.avg_band ?? null}
       />
 
       <WritingTrendChart
-        data={(stats?.writing_trends || []).filter((w) => period === 'all' || filteredTrends.some((t) => t.date === w.date))}
+        data={(stats?.writing_trends || []).filter((w) => inPeriod(w.number))}
       />
 
       {/* 6. Top Mistake Subcategories & Remedial Examples */}

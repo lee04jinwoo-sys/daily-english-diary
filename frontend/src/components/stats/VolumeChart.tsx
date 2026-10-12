@@ -9,19 +9,18 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { DailyTrendItem } from '../../types/essay';
+import { EssayTrendItem } from '../../types/essay';
 import { PenTool } from 'lucide-react';
 
 interface VolumeChartProps {
-  data: DailyTrendItem[];
+  data: EssayTrendItem[];
 }
 
 export const VolumeChart: React.FC<VolumeChartProps> = ({ data }) => {
   if (!data || data.length === 0) return null;
 
   const chartData = data.map((d) => {
-    const parts = d.date.split('-');
-    const label = parts.length === 3 ? `${parts[1]}/${parts[2]}` : d.date;
+    const label = `${d.number}번`;
     return {
       ...d,
       displayDate: label,
@@ -34,10 +33,10 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({ data }) => {
         <div className="space-y-0.5">
           <h3 className="font-serif font-bold text-base text-stone-900 dark:text-[#f0f0f0] flex items-center space-x-2">
             <PenTool className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <span>일자별 작성 볼륨 (단어 수 & 문장 수)</span>
+            <span>에세이별 작성 볼륨 (단어 수 & 문장 수)</span>
           </h3>
           <p className="text-xs text-stone-500 dark:text-stone-400">
-            작성한 단어 수(보라 실선, 좌측 축)와 문장 수(청록 실선, 우측 축)의 일자별 변화 추이입니다.
+            작성한 단어 수(보라 실선, 좌측 축)와 문장 수(청록 실선, 우측 축)의 에세이별 변화 추이입니다.
           </p>
         </div>
       </div>

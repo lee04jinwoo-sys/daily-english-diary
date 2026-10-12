@@ -226,6 +226,7 @@ export interface DailyActivity {
 
 export interface BandTrendItem {
   essay_id: string;
+  number: number;
   date: string;
   essay_type: EssayType;
   revision_of: string | null;
@@ -236,8 +237,12 @@ export interface BandTrendItem {
   grammar: number;
 }
 
-export interface DailyTrendItem {
+// One reviewed essay; number is its place in writing order among essays with text.
+export interface EssayTrendItem {
+  essay_id: string;
+  number: number;
   date: string;
+  essay_type: EssayType;
   word_count: number;
   sentence_count: number;
   error_count: number;
@@ -263,7 +268,7 @@ export interface StatsResponse {
   category_counts: Record<string, number>;
   top_subcategories: MistakeSample[];
   daily_activity: Record<string, DailyActivity>;
-  daily_trends?: DailyTrendItem[];
+  essay_trends?: EssayTrendItem[];
   avg_band: number | null;
   band_trends: BandTrendItem[];
   type_bands: Record<string, number>;
@@ -275,6 +280,7 @@ export type WritingSignal = 'improving' | 'rushed' | 'careful' | 'declining' | '
 // Speed next to accuracy for one reviewed essay with a recorded writing time.
 export interface WritingTrendItem {
   essay_id: string;
+  number: number;
   date: string;
   essay_type: EssayType;
   is_revision: boolean;

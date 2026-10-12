@@ -27,9 +27,9 @@ const SERIES: Array<{ key: keyof BandTrendItem; name: string; color: string; wid
 ];
 
 export const BandTrendChart: React.FC<BandTrendChartProps> = ({ data, typeBands, avgBand }) => {
-  const chartData = data.map((d, i) => {
+  const chartData = data.map((d) => {
     const [, m, day] = d.date.split('-');
-    return { ...d, label: `${i + 1} (${m}/${day})` };
+    return { ...d, label: `${d.number}번 (${m}/${day})` };
   });
   const typeEntries = Object.entries(typeBands).sort((a, b) => a[1] - b[1]);
 

@@ -9,19 +9,18 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts';
-import { DailyTrendItem } from '../../types/essay';
+import { EssayTrendItem } from '../../types/essay';
 import { Sparkles } from 'lucide-react';
 
 interface CoreMetricsChartProps {
-  data: DailyTrendItem[];
+  data: EssayTrendItem[];
 }
 
 export const CoreMetricsChart: React.FC<CoreMetricsChartProps> = ({ data }) => {
   if (!data || data.length === 0) return null;
 
   const chartData = data.map((d) => {
-    const parts = d.date.split('-');
-    const label = parts.length === 3 ? `${parts[1]}/${parts[2]}` : d.date;
+    const label = `${d.number}번`;
     return {
       ...d,
       displayDate: label,
@@ -47,7 +46,7 @@ export const CoreMetricsChart: React.FC<CoreMetricsChartProps> = ({ data }) => {
         </div>
       </div>
 
-      <div className="w-full h-76 pt-2">
+      <div className="w-full h-72 pt-2">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#88888825" vertical={false} />

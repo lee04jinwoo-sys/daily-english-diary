@@ -16,8 +16,12 @@ class DailyActivity(BaseModel):
     best_band: Optional[float] = None
 
 
-class DailyTrendItem(BaseModel):
+class EssayTrendItem(BaseModel):
+    """One reviewed essay; number is its place in writing order among essays with text."""
+    essay_id: str
+    number: int
     date: str
+    essay_type: str
     word_count: int
     sentence_count: int
     error_count: int
@@ -30,6 +34,7 @@ class DailyTrendItem(BaseModel):
 
 class BandTrendItem(BaseModel):
     essay_id: str
+    number: int
     date: str
     essay_type: str
     revision_of: Optional[str] = None
@@ -43,6 +48,7 @@ class BandTrendItem(BaseModel):
 class WritingTrendItem(BaseModel):
     """Speed next to accuracy for one reviewed essay with a recorded writing time."""
     essay_id: str
+    number: int
     date: str
     essay_type: str
     is_revision: bool = False
@@ -72,7 +78,7 @@ class StatsResponse(BaseModel):
     category_counts: Dict[str, int] = Field(default_factory=dict)
     top_subcategories: List[MistakeSample] = Field(default_factory=list)
     daily_activity: Dict[str, DailyActivity] = Field(default_factory=dict)
-    daily_trends: List[DailyTrendItem] = Field(default_factory=list)
+    essay_trends: List[EssayTrendItem] = Field(default_factory=list, description="Per reviewed essay, in writing order")
     band_trends: List[BandTrendItem] = Field(default_factory=list)
     type_bands: Dict[str, float] = Field(default_factory=dict, description="Average overall band per essay type")
     writing_trends: List[WritingTrendItem] = Field(default_factory=list)
