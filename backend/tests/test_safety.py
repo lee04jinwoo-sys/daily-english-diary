@@ -42,22 +42,12 @@ async def test_fresh_db_can_store_suggestions(fresh_db):
 
 
 @pytest.mark.anyio
-async def test_launch_anki_opens_app(client, monkeypatch):
-    calls = []
-
-    class FakeSubprocess:
-        @staticmethod
-        def run(cmd, **kwargs):
-            calls.append(cmd)
-
-            class R:
-                returncode = 0
-            return R()
-
-    monkeypatch.setattr(anki_module, "subprocess", FakeSubprocess, raising=False)
+async def test_no_route_opens_the_mac_anki_app(client):
+    # Anki runs on the Oracle server; the Mac's Anki would be a second client
+    # editing the same AnkiWeb collection.
     res = await client.post("/api/anki/launch")
-    assert res.status_code == 200
-    assert calls == [["open", "-a", "Anki"]]
+    assert res.status_code in (404, 405)
+    assert not hasattr(anki_service, "launch_anki")
 
 
 class _FailingModels:

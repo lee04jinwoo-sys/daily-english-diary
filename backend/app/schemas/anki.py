@@ -42,6 +42,7 @@ class AnkiActionResponse(BaseModel):
 
 class AnkiStatusResponse(BaseModel):
     connected: bool
+    reason: str = "ok"  # ok | tunnel_down (SSH tunnel to the server) | anki_down (server Anki)
     anki_url: str
     sentence_deck: str
     vocab_deck: str

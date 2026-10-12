@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { AnkiStatus } from '../../types/essay';
-import { api } from '../../api/client';
 import { 
   Calendar as CalendarIcon, 
   CheckCircle2, 
@@ -18,7 +17,7 @@ export type AppView = 'topic' | 'editor' | 'calendar' | 'stats';
 
 interface HeaderProps {
   ankiStatus: AnkiStatus | null;
-  onRefreshAnki: () => void;
+  onRefreshAnki: () => unknown;
   isSaving: boolean;
   onNewEssay: () => void;
   activeView: AppView;
@@ -43,20 +42,21 @@ export const Header: React.FC<HeaderProps> = ({
   isCompleted = false,
   onToggleComplete,
 }) => {
-  const [isLaunchingAnki, setIsLaunchingAnki] = useState(false);
+  const [isCheckingAnki, setIsCheckingAnki] = useState(false);
 
-  const handleLaunchAnki = async () => {
+  // Anki runs on the Oracle server; the button only re-checks the connection.
+  const handleRecheckAnki = async () => {
+    setIsCheckingAnki(true);
     try {
-      setIsLaunchingAnki(true);
-      await api.launchAnki();
-      setTimeout(() => {
-        onRefreshAnki();
-        setIsLaunchingAnki(false);
-      }, 2500);
-    } catch {
-      setIsLaunchingAnki(false);
+      await onRefreshAnki();
+    } finally {
+      setIsCheckingAnki(false);
     }
   };
+  const ankiDownText =
+    ankiStatus?.reason === 'anki_down'
+      ? { label: '서버 Anki 꺼짐', title: 'Anki Manager는 응답하지만 서버의 Anki가 응답하지 않습니다. 클릭해서 다시 확인' }
+      : { label: '터널 끊김', title: '오라클 서버로 가는 SSH 터널(Projects/infra/anki_tunnel)에 연결할 수 없습니다. 클릭해서 다시 확인' };
 
   return (
     <header className="h-14 border-b border-[#e9e8e4] dark:border-[#2f2f2f] bg-[#faf9f6]/95 dark:bg-[#1c1c1c]/95 backdrop-blur px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20 transition-colors">
@@ -162,13 +162,13 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           ) : (
             <button
-              onClick={handleLaunchAnki}
-              disabled={isLaunchingAnki}
+              onClick={handleRecheckAnki}
+              disabled={isCheckingAnki}
               className="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-stone-100 dark:bg-[#2c2c2c] hover:bg-stone-200 dark:hover:bg-[#383838] border border-stone-300 dark:border-[#444444] text-stone-700 dark:text-stone-300 text-xs font-medium transition-colors"
-              title="클릭하여 Anki 앱을 실행합니다"
+              title={ankiDownText.title}
             >
-              <Zap className={`w-3 h-3 text-stone-500 dark:text-stone-400 ${isLaunchingAnki ? 'animate-spin' : ''}`} />
-              <span>{isLaunchingAnki ? 'Anki 실행 중...' : 'Anki 실행'}</span>
+              <Zap className={`w-3 h-3 text-stone-500 dark:text-stone-400 ${isCheckingAnki ? 'animate-spin' : ''}`} />
+              <span>{isCheckingAnki ? '확인 중...' : ankiDownText.label}</span>
             </button>
           )}
         </div>

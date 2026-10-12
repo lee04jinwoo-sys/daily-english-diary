@@ -1,5 +1,4 @@
 import requests
-import subprocess
 import re
 import logging
 from typing import Optional, Dict, Any, List
@@ -14,6 +13,8 @@ SENTENCE_DECK, SENTENCE_MODEL = "1. Language::1.1. English::Sentence", "English 
 VOCAB_DECK, VOCAB_MODEL = "1. Language::1.1. English::Vocabulary", "English Vocabulary"
 ALLOWED_POS = {"n", "v", "adj", "adv", "idiom"}
 CARD_TAG = "daily-english-essay"
+TUNNEL_DOWN = ("오라클 서버 Anki에 연결할 수 없습니다. SSH 터널(Projects/infra/anki_tunnel)이 "
+               "떠 있는지 확인하세요.")
 
 
 def normalize_meaning(meaning: str) -> str:
@@ -40,7 +41,7 @@ class AnkiService:
                 raise RuntimeError(res_json["error"])
             return res_json.get("result")
         except requests.exceptions.ConnectionError:
-            raise ConnectionError(f"AnkiConnect에 연결할 수 없습니다 ({self.url}). Anki가 실행 중인지 확인하세요.")
+            raise ConnectionError(f"AnkiConnect에 연결할 수 없습니다 ({self.url}). {TUNNEL_DOWN}")
         except Exception as e:
             raise RuntimeError(f"AnkiConnect 호출 오류 ({action}): {str(e)}")
 
@@ -75,7 +76,7 @@ class AnkiService:
             resp.raise_for_status()
             body = resp.json()
         except requests.exceptions.ConnectionError:
-            return AnkiActionResponse(success=False, error="Anki Manager가 실행 중이 아닙니다. Anki Manager를 켜주세요.")
+            return AnkiActionResponse(success=False, error=f"서버 Anki Manager({settings.ANKI_GATEWAY_URL})에 연결할 수 없습니다. {TUNNEL_DOWN}")
         except Exception as e:
             return AnkiActionResponse(success=False, error=f"Anki Manager 카드 추가 오류: {e}")
         if body.get("duplicate"):
@@ -93,7 +94,7 @@ class AnkiService:
     def add_sentence_card(self, req: SentenceCardRequest) -> AnkiActionResponse:
         """Adds a sentence card via the Anki Manager gateway."""
         if not self.check_connection():
-            return AnkiActionResponse(success=False, error="Anki가 실행되어 있지 않습니다. Anki 앱을 켜주세요.")
+            return AnkiActionResponse(success=False, error=TUNNEL_DOWN)
         sentence = req.sentence.strip()
         if not sentence:
             return AnkiActionResponse(success=False, error="문장이 비어있습니다.")
@@ -110,7 +111,7 @@ class AnkiService:
         under its own rules. Synonyms are always empty there.
         """
         if not self.check_connection():
-            return AnkiActionResponse(success=False, error="Anki가 실행되어 있지 않습니다. Anki 앱을 켜주세요.")
+            return AnkiActionResponse(success=False, error=TUNNEL_DOWN)
         from app.services.gemini_service import normalize_vocab_placeholders
         word = normalize_vocab_placeholders(req.word.strip())
         if not word:
@@ -128,6 +129,15 @@ class AnkiService:
             "generate_audio": True,
         })
 
+    def _reason_when_down(self) -> str:
+        """AnkiConnect did not answer: is the tunnel down, or only the server's Anki?"""
+        try:
+            res = requests.get(f"{settings.ANKI_GATEWAY_URL}/api/cards/status", timeout=5)
+            res.raise_for_status()
+            return "anki_down" if not res.json().get("anki_connected") else "ok"
+        except Exception:
+            return "tunnel_down"
+
     def get_status(self) -> AnkiStatusResponse:
         connected = self.check_connection()
         available_decks: List[str] = []
@@ -139,6 +149,7 @@ class AnkiService:
 
         return AnkiStatusResponse(
             connected=connected,
+            reason="ok" if connected else self._reason_when_down(),
             anki_url=self.url,
             sentence_deck=SENTENCE_DECK,
             vocab_deck=VOCAB_DECK,
@@ -146,52 +157,44 @@ class AnkiService:
         )
 
     def check_existing_cards(self, sentences: List[str], words: List[str]) -> Dict[str, List[str]]:
-        """Fast lookup checking if sentences or words are already in Anki."""
-        existing_sentences: List[str] = []
-        existing_words: List[str] = []
-        if not self.check_connection():
-            return {"existing_sentences": [], "existing_words": []}
+        """Which sentences/words are already in Anki, in one AnkiConnect `multi` round trip."""
+        from app.services.gemini_service import normalize_vocab_placeholders
 
+        def quote(text: str) -> str:
+            return text.replace('"', '\\"')
+
+        lookups = []  # (kind, original, normalized, query)
         for s in sentences:
             clean_s = s.strip()
-            if not clean_s:
-                continue
-            escaped = clean_s.replace('"', '\\"')
-            try:
-                res = self.invoke("findNotes", query=f'note:"English Sentence" "문장:{escaped}"')
-                if res and len(res) > 0:
-                    existing_sentences.append(clean_s)
-            except Exception:
-                pass
-
+            if clean_s:
+                lookups.append(("s", clean_s, clean_s, f'note:"English Sentence" "문장:{quote(clean_s)}"'))
         for w in words:
             clean_w = w.strip()
-            if not clean_w:
-                continue
-            from app.services.gemini_service import normalize_vocab_placeholders
-            norm_w = normalize_vocab_placeholders(clean_w)
-            escaped = norm_w.replace('"', '\\"')
-            try:
-                res = self.invoke("findNotes", query=f'note:"English Vocabulary" "단어:{escaped}"')
-                if res and len(res) > 0:
-                    existing_words.append(clean_w)
-                    if norm_w != clean_w:
-                        existing_words.append(norm_w)
-            except Exception:
-                pass
+            if clean_w:
+                norm_w = normalize_vocab_placeholders(clean_w)
+                lookups.append(("w", clean_w, norm_w, f'note:"English Vocabulary" "단어:{quote(norm_w)}"'))
 
-        return {
-            "existing_sentences": existing_sentences,
-            "existing_words": existing_words
-        }
-
-    def launch_anki(self) -> bool:
-        """Opens the Anki desktop app (macOS)."""
+        existing: Dict[str, List[str]] = {"existing_sentences": [], "existing_words": []}
+        if not lookups or not self.check_connection():
+            return existing
         try:
-            result = subprocess.run(["open", "-a", "Anki"], capture_output=True, timeout=10)
-            return result.returncode == 0
+            results = self.invoke("multi", actions=[
+                {"action": "findNotes", "params": {"query": q}} for *_, q in lookups])
         except Exception as e:
-            logger.warning(f"Failed to launch Anki: {e}")
-            return False
+            logger.warning(f"Existing-card lookup failed: {e}")
+            return existing
+
+        for (kind, original, norm, _), found in zip(lookups, results or []):
+            if isinstance(found, dict):  # per-action {"result", "error"} on some AnkiConnect versions
+                found = found.get("result")
+            if not found:
+                continue
+            if kind == "s":
+                existing["existing_sentences"].append(original)
+            else:
+                existing["existing_words"].append(original)
+                if norm != original:
+                    existing["existing_words"].append(norm)
+        return existing
 
 anki_service = AnkiService()

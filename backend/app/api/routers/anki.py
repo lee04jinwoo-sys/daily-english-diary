@@ -26,17 +26,6 @@ async def get_anki_status():
     """Checks if Anki is connected and retrieves available decks."""
     return anki_service.get_status()
 
-@router.post("/launch")
-async def launch_anki():
-    """Launches Anki on macOS."""
-    success = anki_service.launch_anki()
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Anki 앱 실행에 실패했습니다. 설치 여부를 확인해주세요."
-        )
-    return {"success": True, "message": "Anki 앱을 실행했습니다."}
-
 @router.post("/preview", response_model=CardPreviewResponse)
 async def preview_card(req: CardPreviewRequest):
     """Enriches a sentence or vocab with AI to preview in the card creation modal."""

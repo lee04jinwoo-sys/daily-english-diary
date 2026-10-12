@@ -94,10 +94,6 @@ export const api = {
 
   // Anki
   getAnkiStatus: () => fetchJson<AnkiStatus>('/anki/status'),
-  launchAnki: () =>
-    fetchJson<{ success: boolean; message: string }>('/anki/launch', {
-      method: 'POST',
-    }),
   previewAnkiCard: (req: CardPreviewRequest) =>
     fetchJson<CardPreviewResponse>('/anki/preview', {
       method: 'POST',

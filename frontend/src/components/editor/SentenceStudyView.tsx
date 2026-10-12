@@ -222,7 +222,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
           setExistingSentences((prev) => new Set(prev).add(cleanSentence.toLowerCase()));
           onShowToast(res.duplicate ? '이미 Anki에 등록된 문장입니다 (중복 방지)' : 'Anki 등록 완료! 🎉');
         } else {
-          onShowToast('Anki 앱이 켜져 있는지 확인해주세요! (상단 Anki 상태 확인)');
+          onShowToast('서버 Anki에 연결되어 있지 않습니다 (상단 Anki 상태 확인)');
         }
       }
     } catch (e: any) {

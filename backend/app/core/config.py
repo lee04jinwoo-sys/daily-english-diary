@@ -29,9 +29,11 @@ def resolve_db_path(data_dir: Path) -> Path:
 
 class Settings(BaseModel):
     GEMINI_API_KEY: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "")
-    ANKI_URL: str = Field(default_factory=lambda: os.getenv("ANKI_URL", "http://localhost:8765"))
+    # Anki and Anki Manager run on the Oracle server; the Mac reaches them through the
+    # SSH tunnel in Projects/infra/anki_tunnel (18765 -> AnkiConnect, 8011 -> Anki Manager).
+    ANKI_URL: str = Field(default_factory=lambda: os.getenv("ANKI_URL", "http://127.0.0.1:18765"))
     # Anki Manager's central card gateway: all cards are created through it so its rules apply.
-    ANKI_GATEWAY_URL: str = Field(default_factory=lambda: os.getenv("ANKI_GATEWAY_URL", "http://127.0.0.1:8001"))
+    ANKI_GATEWAY_URL: str = Field(default_factory=lambda: os.getenv("ANKI_GATEWAY_URL", "http://127.0.0.1:8011"))
     HOST: str = Field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
     PORT: int = Field(default_factory=lambda: int(os.getenv("PORT", "8000")))
     DATABASE_PATH: Path = Field(default_factory=lambda: Path(os.getenv("ESSAY_DB_PATH") or DB_PATH))

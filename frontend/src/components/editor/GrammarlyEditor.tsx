@@ -195,7 +195,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
           setSavedVocabIndexes((prev) => new Set(prev).add(idx));
           onShowToast(res.duplicate ? '이미 Anki에 등록된 표현입니다.' : `'${normalizedWord}' Anki 단어 카드가 저장되었습니다! 🎉`);
         } else {
-          onShowToast('Anki 앱이 켜져 있는지 확인해주세요! (상단 Anki 상태 확인)');
+          onShowToast('서버 Anki에 연결되어 있지 않습니다 (상단 Anki 상태 확인)');
         }
       }
     } catch (e: any) {

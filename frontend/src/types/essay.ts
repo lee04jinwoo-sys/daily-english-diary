@@ -184,6 +184,8 @@ export interface CardPreviewResponse {
 
 export interface AnkiStatus {
   connected: boolean;
+  /** ok | tunnel_down (SSH tunnel to the Oracle server) | anki_down (server Anki) */
+  reason?: 'ok' | 'tunnel_down' | 'anki_down';
   anki_url: string;
   sentence_deck: string;
   vocab_deck: string;

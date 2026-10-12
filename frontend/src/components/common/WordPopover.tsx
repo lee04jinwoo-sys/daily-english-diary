@@ -129,7 +129,7 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
             onClose();
           }, 800);
         } else {
-          onShowToast('Anki 앱이 켜져 있는지 확인해주세요! (상단 헤더 확인)');
+          onShowToast('서버 Anki에 연결되어 있지 않습니다 (상단 Anki 상태 확인)');
         }
       }
     } catch (e: any) {
