@@ -73,6 +73,7 @@ export const CATEGORY_LABELS: Record<EssayCategory, string> = {
 export interface CriterionScore {
   band: number;
   comment: string;
+  spread?: number; // max - min band across the scoring runs
 }
 
 export interface EssayRubric {
@@ -112,7 +113,12 @@ export interface ReviewResponse {
   suggestions: SuggestionItem[];
   sentence_pairs?: SentencePair[];
   key_expressions: KeyExpression[];
+  suggestions_verified?: boolean;
 }
+
+// Parts of a streamed review, in roughly the order they arrive.
+export type ReviewPart = 'content_scores' | 'feedback' | 'corrections' | 'language_scores';
+export const REVIEW_PARTS: ReviewPart[] = ['content_scores', 'feedback', 'corrections', 'language_scores'];
 
 export interface Essay {
   id: string;

@@ -9,6 +9,8 @@ import {
   CardType,
   StatsResponse,
   Topic,
+  ReviewPart,
+  REVIEW_PARTS,
 } from './types/essay';
 import { Header, AppView } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -26,6 +28,8 @@ export function App() {
   const [content, setContent] = useState<string>('');
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [reviewResult, setReviewResult] = useState<ReviewResponse | null>(null);
+  // Parts of the running review that have not arrived yet (empty when no review is running).
+  const [pendingParts, setPendingParts] = useState<ReviewPart[]>([]);
 
   const [activeView, setActiveView] = useState<AppView>('editor');
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -157,8 +161,19 @@ export function App() {
     if (!currentEssay || !content.trim()) return;
 
     setIsReviewing(true);
+    // Parts are shown as they arrive; the first one replaces the previous review.
+    let partial: ReviewResponse | null = null;
+    let waiting = [...REVIEW_PARTS];
     try {
-      const res = await api.reviewEssay({ essay_id: currentEssay.id, content });
+      const res = await api.reviewEssayStream({ essay_id: currentEssay.id, content }, (part, data) => {
+        if (!partial) setSuggestions([]); // the previous review's corrections no longer apply
+        partial = mergeReviewPart(partial ?? emptyReview(currentEssay.id, content), part, data);
+        waiting = waiting.filter((p) => p !== part);
+        setReviewResult(partial);
+        setPendingParts(waiting);
+        if (part === 'corrections') setSuggestions(data.suggestions || []);
+      });
+      setPendingParts([]);
       setReviewResult(res);
       setSuggestions(res.suggestions || []);
       setCurrentEssay(await api.getEssay(currentEssay.id));
@@ -167,6 +182,15 @@ export function App() {
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.7 } });
       showToast(`첨삭 완료 · Band ${res.rubric.overall_band.toFixed(1)}`);
     } catch (e: any) {
+      setPendingParts([]);
+      // A failed review is not saved: go back to what the essay had before.
+      try {
+        const essay = await api.getEssay(currentEssay.id);
+        setReviewResult(essay.review ?? null);
+        setSuggestions(essay.review ? (await api.getEssaySuggestions(currentEssay.id)) || [] : []);
+      } catch {
+        // keep whatever is on screen
+      }
       alert(`첨삭 처리 중 오류가 발생했습니다: ${e.message}`);
     } finally {
       setIsReviewing(false);
@@ -288,6 +312,7 @@ export function App() {
             onContentChange={handleContentChange}
             onReview={handleReview}
             isReviewing={isReviewing}
+            pendingParts={pendingParts}
             reviewResult={reviewResult}
             suggestions={suggestions}
             onOpenAnkiModal={handleOpenAnkiModal}
@@ -323,6 +348,38 @@ export function App() {
       />
     </div>
   );
+}
+
+const EMPTY_SCORE = { band: 0, comment: '', spread: 0 };
+
+function emptyReview(essayId: string, content: string): ReviewResponse {
+  return {
+    essay_id: essayId,
+    original_text: content,
+    corrected_text: content,
+    upgraded_text: '',
+    overall_feedback: '',
+    rubric: { task_response: EMPTY_SCORE, coherence: EMPTY_SCORE, lexical: EMPTY_SCORE, grammar: EMPTY_SCORE, overall_band: 0 },
+    argument: { thesis: '', strongest_point: '', weakest_point: '', missing_counterargument: '', paragraph_comments: [] },
+    revision_focus: [],
+    recurring_patterns: [],
+    suggestions: [],
+    sentence_pairs: [],
+    key_expressions: [],
+  };
+}
+
+function mergeReviewPart(review: ReviewResponse, part: ReviewPart, data: any): ReviewResponse {
+  switch (part) {
+    case 'content_scores':
+    case 'language_scores':
+      return { ...review, rubric: { ...review.rubric, ...data } };
+    case 'feedback':
+    case 'corrections':
+      return { ...review, ...data };
+    default:
+      return review;
+  }
 }
 
 export default App;

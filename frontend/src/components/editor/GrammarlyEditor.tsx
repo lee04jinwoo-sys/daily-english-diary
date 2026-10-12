@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SuggestionItem, ReviewResponse, CardType, Essay, SentencePair } from '../../types/essay';
+import { SuggestionItem, ReviewResponse, CardType, Essay, SentencePair, ReviewPart, REVIEW_PARTS } from '../../types/essay';
 import { SuggestionCard } from './SuggestionCard';
 import { CompareTabs } from './CompareTabs';
 import { SentenceStudyView } from './SentenceStudyView';
@@ -31,6 +31,7 @@ interface GrammarlyEditorProps {
   onContentChange: (content: string) => void;
   onReview: () => void;
   isReviewing: boolean;
+  pendingParts: ReviewPart[];
   reviewResult: ReviewResponse | null;
   suggestions: SuggestionItem[];
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
@@ -46,6 +47,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   onContentChange,
   onReview,
   isReviewing,
+  pendingParts,
   reviewResult,
   suggestions,
   onOpenAnkiModal,
@@ -68,7 +70,8 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   }, [reviewResult]);
 
   useEffect(() => {
-    if (activeTab !== 'sentence' || !reviewResult || storedPairs.length > 0 || lazyPairs || pairsState !== 'idle') return;
+    // During a review nothing is saved yet, so there is nothing to build pairs from.
+    if (activeTab !== 'sentence' || !reviewResult || isReviewing || storedPairs.length > 0 || lazyPairs || pairsState !== 'idle') return;
     setPairsState('loading');
     api.getSentencePairs(essay.id)
       .then((pairs) => {
@@ -79,7 +82,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
         setPairsState('error');
         onShowToast(`문장별 대조를 만들지 못했습니다: ${e.message}`);
       });
-  }, [activeTab, reviewResult, storedPairs.length, lazyPairs, pairsState, essay.id, onShowToast]);
+  }, [activeTab, reviewResult, isReviewing, storedPairs.length, lazyPairs, pairsState, essay.id, onShowToast]);
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [savingVocabIndex, setSavingVocabIndex] = useState<number | null>(null);
@@ -443,7 +446,9 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             className="flex items-center space-x-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 dark:from-blue-500 dark:to-indigo-500 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles className={`w-3.5 h-3.5 ${isReviewing ? 'animate-spin' : ''}`} />
-            <span>{isReviewing ? 'AI 첨삭 중...' : 'AI 첨삭 받기'}</span>
+            <span>
+              {isReviewing ? `AI 첨삭 중... (${REVIEW_PARTS.length - pendingParts.length}/${REVIEW_PARTS.length})` : 'AI 첨삭 받기'}
+            </span>
           </button>
         </div>
       </div>
@@ -543,7 +548,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             {/* AI Review Summary / Feedback & Key Expressions */}
             {reviewResult && (
               <div className="space-y-4 pt-2">
-                <EssayFeedback review={reviewResult} onRevise={onRevise} onOpenAnkiModal={onOpenAnkiModal} />
+                <EssayFeedback review={reviewResult} pendingParts={pendingParts} onRevise={onRevise} onOpenAnkiModal={onOpenAnkiModal} />
 
                 {/* Key Expressions Extracted */}
                 {reviewResult.key_expressions && reviewResult.key_expressions.length > 0 && (
@@ -632,7 +637,9 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-400 dark:text-stone-500 space-y-2">
                 <CheckCircle className="w-8 h-8 text-emerald-500/80 dark:text-emerald-400/80" />
                 <div className="text-xs font-medium text-stone-600 dark:text-stone-300">
-                  {reviewResult ? '교정할 부분이 없습니다.' : '에세이 작성 후 [AI 첨삭 받기]를 눌러보세요.'}
+                  {pendingParts.includes('corrections')
+                    ? '문장별로 교정을 찾고 검증하는 중입니다...'
+                    : reviewResult ? '교정할 부분이 없습니다.' : '에세이 작성 후 [AI 첨삭 받기]를 눌러보세요.'}
                 </div>
               </div>
             ) : (

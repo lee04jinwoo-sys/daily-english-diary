@@ -1,22 +1,33 @@
 import React from 'react';
-import { ReviewResponse, CardType, RecurringPattern } from '../../types/essay';
-import { MessageSquare, Target, RotateCcw, Scale, Repeat, BookmarkPlus } from 'lucide-react';
+import { ReviewResponse, CardType, RecurringPattern, ReviewPart } from '../../types/essay';
+import { MessageSquare, Target, RotateCcw, Scale, Repeat, BookmarkPlus, Loader2 } from 'lucide-react';
 
 interface EssayFeedbackProps {
   review: ReviewResponse;
+  pendingParts?: ReviewPart[];
   onRevise: () => void;
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
 }
 
-const CRITERIA: Array<{ key: 'task_response' | 'coherence' | 'lexical' | 'grammar'; label: string; short: string }> = [
-  { key: 'task_response', label: '과제 수행', short: '과제' },
-  { key: 'coherence', label: '구성·흐름', short: '흐름' },
-  { key: 'lexical', label: '어휘', short: '어휘' },
-  { key: 'grammar', label: '문법 범위·정확성', short: '문법' },
+const CRITERIA: Array<{ key: 'task_response' | 'coherence' | 'lexical' | 'grammar'; label: string; short: string; part: ReviewPart }> = [
+  { key: 'task_response', label: '과제 수행', short: '과제', part: 'content_scores' },
+  { key: 'coherence', label: '구성·흐름', short: '흐름', part: 'content_scores' },
+  { key: 'lexical', label: '어휘', short: '어휘', part: 'language_scores' },
+  { key: 'grammar', label: '문법 범위·정확성', short: '문법', part: 'language_scores' },
 ];
 
-export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, onOpenAnkiModal }) => {
+const PART_LABELS: Record<ReviewPart, string> = {
+  content_scores: '내용 점수',
+  feedback: '총평·내용 피드백',
+  corrections: '교정',
+  language_scores: '문법·어휘 점수',
+};
+
+export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingParts = [], onRevise, onOpenAnkiModal }) => {
   const { rubric, argument } = review;
+  const isPending = (part: ReviewPart) => pendingParts.includes(part);
+  const scoresPending = isPending('content_scores') || isPending('language_scores');
+  const bandText = (c: (typeof CRITERIA)[number]) => (isPending(c.part) ? '…' : rubric[c.key].band.toFixed(1));
   const patterns = review.recurring_patterns || [];
 
   // Card front = the learner's own sentence, corrected; falls back to the fix itself.
@@ -33,6 +44,13 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, 
 
   return (
     <div id="essay-feedback" className="space-y-4 scroll-mt-4">
+      {pendingParts.length > 0 && (
+        <div className="flex items-center space-x-2 text-xs text-stone-600 dark:text-stone-300 bg-stone-100/70 dark:bg-[#262626] border border-stone-200 dark:border-[#333333] rounded-lg px-3 py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          <span>아직 오는 중: {pendingParts.map((p) => PART_LABELS[p]).join(' · ')}</span>
+        </div>
+      )}
+
       {/* Overall feedback */}
       {review.overall_feedback && (
         <div className="bg-gradient-to-br from-amber-50/70 to-orange-50/50 dark:from-amber-950/30 dark:to-orange-950/20 border border-amber-200/80 dark:border-amber-800/40 rounded-xl p-5 shadow-xs">
@@ -143,21 +161,24 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, onRevise, 
             <span>점수 (참고용, AI 추정)</span>
           </span>
           <span className="tabular-nums">
-            종합 {rubric.overall_band.toFixed(1)} ·{' '}
-            {CRITERIA.map(({ key, short }) => `${short} ${rubric[key].band.toFixed(1)}`).join(' · ')}
+            종합 {scoresPending ? '…' : rubric.overall_band.toFixed(1)} ·{' '}
+            {CRITERIA.map((c) => `${c.short} ${bandText(c)}`).join(' · ')}
             <span className="ml-2 group-open:hidden">▾</span>
             <span className="ml-2 hidden group-open:inline">▴</span>
           </span>
         </summary>
         <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {CRITERIA.map(({ key, label }) => (
-            <div key={key} className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
+          {CRITERIA.map((c) => (
+            <div key={c.key} className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-stone-700 dark:text-stone-300">{label}</span>
-                <span className="font-bold tabular-nums text-stone-900 dark:text-stone-100">{rubric[key].band.toFixed(1)}</span>
+                <span className="font-semibold text-stone-700 dark:text-stone-300">{c.label}</span>
+                <span className="font-bold tabular-nums text-stone-900 dark:text-stone-100">{bandText(c)}</span>
               </div>
-              {rubric[key].comment && (
-                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-2 leading-relaxed">{rubric[key].comment}</p>
+              {!isPending(c.part) && rubric[c.key].comment && (
+                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-2 leading-relaxed">{rubric[c.key].comment}</p>
+              )}
+              {!isPending(c.part) && (rubric[c.key].spread ?? 0) > 0 && (
+                <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-1">3회 채점 차이 {rubric[c.key].spread!.toFixed(1)}</p>
               )}
             </div>
           ))}
