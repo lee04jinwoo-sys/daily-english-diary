@@ -80,7 +80,7 @@ async def test_main_review_does_not_produce_sentence_pairs(client, monkeypatch):
 async def test_review_call_is_deterministic_and_essay_comes_last(client, monkeypatch):
     _, _, rec = await _reviewed_essay(client, monkeypatch)
     configs = {role: k["config"] for role, k in rec.calls}
-    assert {role: c.temperature for role, c in configs.items()} == {"main": 0, "detect": 0, "verify": 0, "score": 0.7}
+    assert {role: c.temperature for role, c in configs.items()} == {"main": 0, "detect": 0, "verify": 0, "score_content": 0.7, "score_language": 0.7}
     assert configs["main"].thinking_config.thinking_budget == 2048
     assert configs["detect"].thinking_config.thinking_budget == 2048
     # Static instructions first so the prefix can be cached; the essay is at the very end.

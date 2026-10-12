@@ -17,7 +17,10 @@ from app.schemas.review import (
 )
 from app.schemas.anki import CardPreviewResponse, CardType
 from app.services.text_utils import apply_suggestions, split_sentences
-from app.services.review_prompts import build_main_prompt, build_detect_prompt, build_verify_prompt, build_score_prompt
+from app.services.review_prompts import (
+    build_main_prompt, build_detect_prompt, build_verify_prompt,
+    build_content_score_prompt, build_language_score_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +81,8 @@ SCORE_RUNS = 3
 SCORE_TEMPERATURE = 0.7  # independent runs, so the median can smooth out one-off swings
 SCORE_THINKING_BUDGET = 1024
 CRITERIA = ("task_response", "coherence", "lexical", "grammar")
+CONTENT_CRITERIA = ("task_response", "coherence")
+LANGUAGE_CRITERIA = ("grammar", "lexical")
 
 
 def record_metric(row: dict) -> None:
@@ -151,14 +156,14 @@ def ielts_overall(bands) -> float:
     return half_band(sum(bands) / len(bands))
 
 
-def parse_score_run(raw) -> Optional[dict]:
+def parse_score_run(raw, criteria=CRITERIA) -> Optional[dict]:
     """{criterion: (band, comment)} from one scoring answer, or None if it is unusable."""
     if not isinstance(raw, dict):
         return None
     if isinstance(raw.get("rubric"), dict):
         raw = raw["rubric"]
     out = {}
-    for k in CRITERIA:
+    for k in criteria:
         c = raw.get(k)
         if not isinstance(c, dict):
             c = {"band": c}
@@ -170,14 +175,18 @@ def parse_score_run(raw) -> Optional[dict]:
     return out
 
 
-def combine_score_runs(runs: List[dict]) -> EssayRubric:
-    """Median band per criterion across runs; the comment comes from a run that gave that band."""
+def combine_score_runs(runs: List[dict], criteria=CRITERIA) -> dict:
+    """{criterion: CriterionScore} with the median band across runs; the comment comes from a run near it."""
     parts = {}
-    for k in CRITERIA:
+    for k in criteria:
         bands = [r[k][0] for r in runs]
         median = half_band(statistics.median(bands))
         closest = min(runs, key=lambda r: abs(r[k][0] - median))
         parts[k] = CriterionScore(band=median, comment=closest[k][1], spread=max(bands) - min(bands))
+    return parts
+
+
+def build_rubric(parts: dict) -> EssayRubric:
     return EssayRubric(**parts, overall_band=ielts_overall([parts[k].band for k in CRITERIA]))
 
 
@@ -374,28 +383,37 @@ class GeminiService:
         kept, patterns, verified = await self._verify(essay_id, prompt_text, content, spans, candidates)
         return candidates, dropped, kept, patterns, verified
 
-    async def _score(self, essay_id: str, type_guide: str, prompt_text: str, content: str) -> EssayRubric:
+    async def _score(self, essay_id: str, prompt: str, label: str, criteria) -> dict:
         """Score SCORE_RUNS times in parallel and keep the median per criterion; failed runs are skipped."""
-        prompt = build_score_prompt(type_guide, prompt_text, content)
         answers = await asyncio.gather(*[
             self._generate_json(prompt, SCORE_TEMPERATURE, thinking_budget=SCORE_THINKING_BUDGET,
-                                label="score", essay_id=essay_id)
+                                label=label, essay_id=essay_id)
             for _ in range(SCORE_RUNS)
         ], return_exceptions=True)
-        runs = [r for r in (parse_score_run(a) for a in answers if not isinstance(a, BaseException)) if r]
+        runs = [r for r in (parse_score_run(a, criteria) for a in answers if not isinstance(a, BaseException)) if r]
         if not runs:
-            raise GeminiError("밴드 채점 응답을 하나도 받지 못했습니다.")
+            raise GeminiError(f"밴드 채점({label}) 응답을 하나도 받지 못했습니다.")
         if len(runs) < SCORE_RUNS:
-            logger.warning(f"Only {len(runs)}/{SCORE_RUNS} scoring runs were usable")
-        return combine_score_runs(runs)
+            logger.warning(f"Only {len(runs)}/{SCORE_RUNS} {label} runs were usable")
+        return combine_score_runs(runs, criteria)
+
+    async def _errors_then_language_score(self, essay_id: str, type_guide: str, prompt_text: str,
+                                          content: str, spans: List[tuple]):
+        """Find and verify errors, then score grammar and lexical from the verified corrections."""
+        candidates, dropped, kept, patterns, verified = await self._find_errors(essay_id, prompt_text, content, spans)
+        language = await self._score(
+            essay_id, build_language_score_prompt(type_guide, prompt_text, content, kept),
+            "score_language", LANGUAGE_CRITERIA)
+        return candidates, dropped, kept, patterns, verified, language
 
     async def review_essay(self, essay_id: str, prompt_text: str, essay_type: str, content: str) -> ReviewResponse:
         """Reviews an essay for output practice.
 
         Three branches run at the same time:
-        - score: IELTS bands, three runs, median per criterion;
+        - content score: task_response and coherence from the essay (three runs, median);
         - main: argument feedback, revision focus, the C1+ rewrite and key expressions;
-        - errors: find errors sentence by sentence -> verify each -> group verified ones into patterns.
+        - errors: find errors sentence by sentence -> verify each -> group verified ones into patterns
+          -> language score: grammar and lexical from the verified corrections (three runs, median).
         Sentence pairs and the corrected full text are not generated by the model
         (see generate_sentence_pairs / apply_suggestions).
         """
@@ -403,12 +421,14 @@ class GeminiService:
         spans = split_sentences(content)
         started = time.monotonic()
         try:
-            data, rubric, (candidates, dropped, suggestions, patterns, verified) = await asyncio.gather(
-                self._generate_json(build_main_prompt(type_guide, prompt_text, content), 0,
-                                    thinking_budget=REVIEW_THINKING_BUDGET, label="main", essay_id=essay_id),
-                self._score(essay_id, type_guide, prompt_text, content),
-                self._find_errors(essay_id, prompt_text, content, spans),
-            )
+            data, content_scores, (candidates, dropped, suggestions, patterns, verified, language_scores) = \
+                await asyncio.gather(
+                    self._generate_json(build_main_prompt(type_guide, prompt_text, content), 0,
+                                        thinking_budget=REVIEW_THINKING_BUDGET, label="main", essay_id=essay_id),
+                    self._score(essay_id, build_content_score_prompt(type_guide, prompt_text, content),
+                                "score_content", CONTENT_CRITERIA),
+                    self._errors_then_language_score(essay_id, type_guide, prompt_text, content, spans),
+                )
         except Exception as e:
             logger.error(f"Gemini review error: {e}", exc_info=True)
             raise GeminiError(str(e)) from e
@@ -444,7 +464,7 @@ class GeminiService:
             corrected_text=corrected,
             upgraded_text=data.get("upgraded_text") or corrected,
             overall_feedback=data.get("overall_feedback", ""),
-            rubric=rubric,
+            rubric=build_rubric({**content_scores, **language_scores}),
             argument=parse_argument(data.get("argument") or {}),
             revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
             recurring_patterns=patterns,
