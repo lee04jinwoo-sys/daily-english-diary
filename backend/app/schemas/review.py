@@ -54,6 +54,7 @@ class ReviewRequest(BaseModel):
 class CriterionScore(BaseModel):
     band: float = Field(..., description="IELTS-style band 0-9 in 0.5 steps")
     comment: str = Field(default="", description="One-line Korean comment")
+    spread: float = Field(default=0.0, description="Max minus min band across the scoring runs")
 
 
 class EssayRubric(BaseModel):

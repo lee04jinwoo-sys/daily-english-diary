@@ -70,7 +70,8 @@ async def main(prefixes):
         results.append({"id": row["id"], "before": before, "after": after, **captured.get(row["id"], {})})
 
         print(f"\n=== {row['id'][:8]} ({row['essay_type']}) ===")
-        print(f"bands  before {bands(before)}  after {bands(after)}")
+        print(f"bands  before {bands(before)}  after {bands(after)}  "
+              f"spread {[after['rubric'][k].get('spread', 0) for k in ('task_response', 'coherence', 'lexical', 'grammar')]}")
         print(f"tiers  before {tiers(before)}  after {tiers(after)}")
         print(f"rejected by verifier: {len(captured.get(row['id'], {}).get('rejected', []))}"
               f"  verified={captured.get(row['id'], {}).get('verified')}")

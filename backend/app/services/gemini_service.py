@@ -1,5 +1,7 @@
 import asyncio
 import json
+import math
+import statistics
 import logging
 import re
 import time
@@ -15,7 +17,7 @@ from app.schemas.review import (
 )
 from app.schemas.anki import CardPreviewResponse, CardType
 from app.services.text_utils import apply_suggestions, split_sentences
-from app.services.review_prompts import build_main_prompt, build_detect_prompt, build_verify_prompt
+from app.services.review_prompts import build_main_prompt, build_detect_prompt, build_verify_prompt, build_score_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,10 @@ MAX_SUGGESTION_WORDS = 12
 REVIEW_THINKING_BUDGET = 2048
 DETECT_THINKING_BUDGET = 2048
 VERIFY_THINKING_BUDGET = 1024
+SCORE_RUNS = 3
+SCORE_TEMPERATURE = 0.7  # independent runs, so the median can smooth out one-off swings
+SCORE_THINKING_BUDGET = 1024
+CRITERIA = ("task_response", "coherence", "lexical", "grammar")
 
 
 def record_metric(row: dict) -> None:
@@ -135,26 +141,44 @@ def parse_patterns(raw) -> list[RecurringPattern]:
     return out[:4]
 
 
-def round_band(value) -> float:
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return min(9.0, max(0.0, round(v * 2) / 2))
+def half_band(value: float) -> float:
+    """Nearest 0.5, halves rounded up (6.25 -> 6.5), clamped to 0-9."""
+    return min(9.0, max(0.0, math.floor(value * 2 + 0.5) / 2))
 
 
-def parse_rubric(raw: dict) -> EssayRubric:
-    def crit(key: str) -> CriterionScore:
-        c = raw.get(key) or {}
+def ielts_overall(bands) -> float:
+    """IELTS overall: mean of the criteria; .25 rounds up to .5 and .75 up to the next band."""
+    return half_band(sum(bands) / len(bands))
+
+
+def parse_score_run(raw) -> Optional[dict]:
+    """{criterion: (band, comment)} from one scoring answer, or None if it is unusable."""
+    if not isinstance(raw, dict):
+        return None
+    if isinstance(raw.get("rubric"), dict):
+        raw = raw["rubric"]
+    out = {}
+    for k in CRITERIA:
+        c = raw.get(k)
         if not isinstance(c, dict):
             c = {"band": c}
-        return CriterionScore(band=round_band(c.get("band")), comment=str(c.get("comment", "")))
+        try:
+            band = float(c.get("band"))
+        except (TypeError, ValueError):
+            return None
+        out[k] = (min(9.0, max(0.0, band)), str(c.get("comment", "")))
+    return out
 
-    parts = {k: crit(k) for k in ("task_response", "coherence", "lexical", "grammar")}
-    overall = raw.get("overall_band")
-    if overall is None:
-        overall = sum(p.band for p in parts.values()) / 4
-    return EssayRubric(**parts, overall_band=round_band(overall))
+
+def combine_score_runs(runs: List[dict]) -> EssayRubric:
+    """Median band per criterion across runs; the comment comes from a run that gave that band."""
+    parts = {}
+    for k in CRITERIA:
+        bands = [r[k][0] for r in runs]
+        median = half_band(statistics.median(bands))
+        closest = min(runs, key=lambda r: abs(r[k][0] - median))
+        parts[k] = CriterionScore(band=median, comment=closest[k][1], spread=max(bands) - min(bands))
+    return EssayRubric(**parts, overall_band=ielts_overall([parts[k].band for k in CRITERIA]))
 
 
 def parse_argument(raw: dict) -> ArgumentFeedback:
@@ -350,11 +374,27 @@ class GeminiService:
         kept, patterns, verified = await self._verify(essay_id, prompt_text, content, spans, candidates)
         return candidates, dropped, kept, patterns, verified
 
+    async def _score(self, essay_id: str, type_guide: str, prompt_text: str, content: str) -> EssayRubric:
+        """Score SCORE_RUNS times in parallel and keep the median per criterion; failed runs are skipped."""
+        prompt = build_score_prompt(type_guide, prompt_text, content)
+        answers = await asyncio.gather(*[
+            self._generate_json(prompt, SCORE_TEMPERATURE, thinking_budget=SCORE_THINKING_BUDGET,
+                                label="score", essay_id=essay_id)
+            for _ in range(SCORE_RUNS)
+        ], return_exceptions=True)
+        runs = [r for r in (parse_score_run(a) for a in answers if not isinstance(a, BaseException)) if r]
+        if not runs:
+            raise GeminiError("밴드 채점 응답을 하나도 받지 못했습니다.")
+        if len(runs) < SCORE_RUNS:
+            logger.warning(f"Only {len(runs)}/{SCORE_RUNS} scoring runs were usable")
+        return combine_score_runs(runs)
+
     async def review_essay(self, essay_id: str, prompt_text: str, essay_type: str, content: str) -> ReviewResponse:
         """Reviews an essay for output practice.
 
-        Two branches run at the same time:
-        - main: bands, argument feedback, revision focus, the C1+ rewrite and key expressions;
+        Three branches run at the same time:
+        - score: IELTS bands, three runs, median per criterion;
+        - main: argument feedback, revision focus, the C1+ rewrite and key expressions;
         - errors: find errors sentence by sentence -> verify each -> group verified ones into patterns.
         Sentence pairs and the corrected full text are not generated by the model
         (see generate_sentence_pairs / apply_suggestions).
@@ -363,9 +403,10 @@ class GeminiService:
         spans = split_sentences(content)
         started = time.monotonic()
         try:
-            data, (candidates, dropped, suggestions, patterns, verified) = await asyncio.gather(
+            data, rubric, (candidates, dropped, suggestions, patterns, verified) = await asyncio.gather(
                 self._generate_json(build_main_prompt(type_guide, prompt_text, content), 0,
                                     thinking_budget=REVIEW_THINKING_BUDGET, label="main", essay_id=essay_id),
+                self._score(essay_id, type_guide, prompt_text, content),
                 self._find_errors(essay_id, prompt_text, content, spans),
             )
         except Exception as e:
@@ -403,7 +444,7 @@ class GeminiService:
             corrected_text=corrected,
             upgraded_text=data.get("upgraded_text") or corrected,
             overall_feedback=data.get("overall_feedback", ""),
-            rubric=parse_rubric(data.get("rubric") or {}),
+            rubric=rubric,
             argument=parse_argument(data.get("argument") or {}),
             revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
             recurring_patterns=patterns,

@@ -150,7 +150,7 @@ async def test_each_call_is_recorded(client, monkeypatch, tmp_path):
     await review(client, monkeypatch, router)
     rows = [json.loads(line) for line in metrics.read_text().splitlines()]
     calls = [r for r in rows if r["label"] != "summary"]
-    assert sorted(r["label"] for r in calls) == ["detect", "main", "verify"]
+    assert sorted(r["label"] for r in calls) == ["detect", "main", "score", "score", "score", "verify"]
     for r in calls:
         assert r["seconds"] >= 0
         assert r["output_tokens"] == 50

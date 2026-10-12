@@ -1,7 +1,8 @@
 """Prompts for the essay review.
 
-The review runs three calls:
-- main: bands, argument feedback, revision focus, C1+ rewrite, key expressions (no error finding);
+The review runs these calls:
+- score ([밴드 채점], three times): IELTS bands only;
+- main: argument feedback, revision focus, C1+ rewrite, key expressions (no error finding);
 - detect ([오류 탐지]): every error, located by sentence number;
 - verify ([교정 검증]): accept or reject each candidate in context, group accepted ones into patterns.
 Static instructions come first and the essay last, so the shared prefix can be cached.
@@ -24,27 +25,20 @@ def numbered_sentences(content: str, spans: List[tuple]) -> str:
 def build_main_prompt(type_guide: str, prompt_text: str, content: str) -> str:
     return f"""
 당신은 IELTS Writing Task 2 채점 경험이 많은 영어 코치입니다. {LEARNER}
-피드백의 중심은 언어입니다. 칭찬보다 구체적이고 냉정하게. (문장 단위 오류 교정은 다른 단계에서 하므로 여기서는 하지 않습니다.)
+피드백의 중심은 언어입니다. 칭찬보다 구체적이고 냉정하게. (문장 단위 오류 교정과 밴드 채점은 다른 단계에서 하므로 여기서는 하지 않습니다.)
 
 [출력 지침]
-1. rubric: IELTS 4개 기준 각각 0~9 밴드(0.5 단위) + 한국어 한 줄 코멘트. overall_band는 4개 평균을 0.5 단위로 반올림.
-   - task_response: 질문에 답했는가, 하고 싶은 말(입장과 근거)이 분명히 전달되는가
-   - coherence: 문장과 아이디어가 자연스럽게 이어지는가, 연결어 사용(남용 포함)
-   - lexical: 어휘의 정확성·폭·콜로케이션
-   - grammar: 문법 정확성과 구조의 다양성
-2. argument (한국어, 각 1~2문장): thesis, strongest_point, weakest_point, missing_counterargument,
+1. argument (한국어, 각 1~2문장): thesis, strongest_point, weakest_point, missing_counterargument,
    paragraph_comments(문단 번호별 한 줄). 학습자의 예시가 자기 주장과 모순되면 weakest_point에서 그것부터 지적하세요.
-3. revision_focus: 고쳐 쓸 때 집중할 표현상의 2~3가지(한국어, 각 한 문장).
-4. upgraded_text: 같은 입장·논거로 C1+ 필자가 쓴 버전. 좋은 신문 칼럼처럼 정확하고 담백하게.
+2. revision_focus: 고쳐 쓸 때 집중할 표현상의 2~3가지(한국어, 각 한 문장).
+3. upgraded_text: 같은 입장·논거로 C1+ 필자가 쓴 버전. 좋은 신문 칼럼처럼 정확하고 담백하게.
    미사여구, 과장된 형용사, IELTS 상투구(foster an environment conducive to, it is undeniable that, plays a pivotal role 등) 금지.
-5. key_expressions: upgraded_text에서 다음 글에 바로 쓸 표현 4~6개. expression(someone/something 대신 A, B, V-ing 표기),
+4. key_expressions: upgraded_text에서 다음 글에 바로 쓸 표현 4~6개. expression(someone/something 대신 A, B, V-ing 표기),
    meaning(한국어), pos("n","v","adj","adv","idiom","prep","conj" 중 하나)만 쓰세요.
-6. overall_feedback: 한국어 2~3문장(현재 수준, 가장 큰 약점, 다음 한 걸음).
+5. overall_feedback: 한국어 2~3문장(현재 수준, 가장 큰 약점, 다음 한 걸음).
 
 [JSON 응답 규격]
 {{
-  "rubric": {{"task_response": {{"band": 6.5, "comment": "..."}}, "coherence": {{"band": 6.5, "comment": "..."}},
-             "lexical": {{"band": 6.5, "comment": "..."}}, "grammar": {{"band": 6.5, "comment": "..."}}, "overall_band": 6.5}},
   "argument": {{"thesis": "...", "strongest_point": "...", "weakest_point": "...", "missing_counterargument": "...",
                "paragraph_comments": [{{"paragraph": 1, "comment": "..."}}]}},
   "revision_focus": ["..."],
@@ -129,4 +123,36 @@ pattern(한국어 이름), ids(후보 id 목록), fix(영어), tip(한국어 한
 
 [교정 후보]
 {listing}
+"""
+
+
+def build_score_prompt(type_guide: str, prompt_text: str, content: str) -> str:
+    return f"""
+[밴드 채점]
+당신은 IELTS Writing Task 2 공인 채점관입니다. {LEARNER}
+아래 기준표에 맞춰 4개 기준을 각각 0~9 밴드(0.5 단위)로 채점하세요. 먼저 기준표의 어느 칸에 가장 가까운지 판단한 뒤 숫자를 정하세요.
+분량·서론·결론 형식은 점수에 반영하지 않습니다.
+
+[기준표]
+- task_response (질문에 답하고 입장과 근거를 전달하는가)
+  밴드 5: 입장이 불분명하거나 근거가 부족·반복적 / 밴드 6: 입장은 있으나 근거 전개가 얕거나 일반론 / 밴드 7: 입장이 분명하고 근거를 구체적으로 전개 / 밴드 8: 모든 부분에 충분히 답하고 근거가 잘 뒷받침됨
+- coherence (문장과 아이디어의 연결, 연결어 사용)
+  밴드 5: 전개가 끊기고 연결어가 부족하거나 기계적 / 밴드 6: 대체로 이어지나 연결어 남용·오용, 문단 내 흐름이 고르지 않음 / 밴드 7: 논리적으로 이어지고 연결어를 적절히 사용 / 밴드 8: 흐름이 매끄럽고 연결이 자연스러움
+- lexical (어휘의 정확성·폭·콜로케이션)
+  밴드 5: 어휘가 제한적이고 의미를 흐리는 오류가 잦음 / 밴드 6: 과제에 충분한 어휘, 단어 선택·콜로케이션 오류가 있으나 의미는 통함 / 밴드 7: 덜 흔한 어휘와 콜로케이션을 쓰고 오류가 가끔 있음 / 밴드 8: 폭넓고 정확하며 오류가 드묾
+- grammar (문법 정확성과 구조의 다양성)
+  밴드 5: 구조가 단순하고 오류가 잦아 이해를 방해 / 밴드 6: 단순·복합 구조를 섞지만 오류(관사, 수일치, 시제 등)가 자주 보임 / 밴드 7: 다양한 복합 구조, 오류 없는 문장이 많고 오류가 가끔 있음 / 밴드 8: 대부분의 문장에 오류가 없음
+
+[출력] 기준마다 band(숫자)와 comment(한국어 한 줄, 그 점수의 핵심 근거).
+
+[JSON 응답 규격]
+{{"task_response": {{"band": <0~9, 0.5 단위>, "comment": "..."}},
+  "coherence": {{"band": <0~9, 0.5 단위>, "comment": "..."}},
+  "lexical": {{"band": <0~9, 0.5 단위>, "comment": "..."}},
+  "grammar": {{"band": <0~9, 0.5 단위>, "comment": "..."}}}}
+
+[에세이 유형]: {type_guide}
+[에세이 문제]: {prompt_text}
+[학습자 에세이]:
+\"\"\"{content}\"\"\"
 """

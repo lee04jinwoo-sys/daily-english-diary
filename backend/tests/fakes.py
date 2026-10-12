@@ -13,6 +13,8 @@ def role_of(prompt: str) -> str:
         return "verify"
     if "[다시 쓴 글]" in prompt:
         return "pairs"
+    if "[밴드 채점]" in prompt:
+        return "score"
     return "main"
 
 
@@ -22,11 +24,11 @@ def accept_all(n: int, patterns=None) -> dict:
 
 
 class Router:
-    """main/detect/verify/pairs -> response. A list value is consumed one item per call."""
+    """main/detect/verify/pairs/score -> response. A list value is consumed one item per call."""
 
-    def __init__(self, main=MAIN, detect=None, verify=None, pairs=None):
+    def __init__(self, main=MAIN, detect=None, verify=None, pairs=None, score=None):
         self.responses = {"main": main, "detect": detect or {"suggestions": []}, "verify": verify or {},
-                          "pairs": pairs or {"pairs": []}}
+                          "pairs": pairs or {"pairs": []}, "score": score or {"rubric": FAKE_REVIEW["rubric"]}}
         self.prompts = {}
         self.calls = []
         router = self
