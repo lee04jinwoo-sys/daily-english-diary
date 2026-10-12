@@ -38,7 +38,7 @@ class Settings(BaseModel):
     HOST: str = Field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
     PORT: int = Field(default_factory=lambda: int(os.getenv("PORT", "8000")))
     DATABASE_PATH: Path = Field(default_factory=lambda: Path(os.getenv("ESSAY_DB_PATH") or DB_PATH))
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
     # One JSON line per Gemini call of a review (label, seconds, tokens) and one summary line per review.
     REVIEW_METRICS_PATH: Optional[Path] = Field(default_factory=lambda: DATA_DIR / "review_metrics.jsonl")
 
