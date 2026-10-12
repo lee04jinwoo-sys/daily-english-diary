@@ -98,3 +98,4 @@ class ReviewResponse(BaseModel):
     suggestions: List[SuggestionItem] = Field(default_factory=list)
     sentence_pairs: List[SentencePair] = Field(default_factory=list)
     key_expressions: List[KeyExpression] = Field(default_factory=list)
+    suggestions_verified: bool = Field(default=True, description="False when the verification call failed and candidates were kept unverified")

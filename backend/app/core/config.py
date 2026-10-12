@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
@@ -38,5 +39,7 @@ class Settings(BaseModel):
     PORT: int = Field(default_factory=lambda: int(os.getenv("PORT", "8000")))
     DATABASE_PATH: Path = Field(default_factory=lambda: Path(os.getenv("ESSAY_DB_PATH") or DB_PATH))
     GEMINI_MODEL: str = "gemini-2.5-flash"
+    # One JSON line per Gemini call of a review (label, seconds, tokens) and one summary line per review.
+    REVIEW_METRICS_PATH: Optional[Path] = Field(default_factory=lambda: DATA_DIR / "review_metrics.jsonl")
 
 settings = Settings()

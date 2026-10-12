@@ -4,32 +4,10 @@ import json
 import pytest
 
 from app.services.gemini_service import gemini_service
+from tests.fakes import Router, accept_all
 from tests.test_essays import FAKE_REVIEW
 
 CONTENT = "Many people works long hours. I use social media and internet every day."
-
-
-class _Recorder:
-    """Fake Gemini client returning queued payloads and recording each call."""
-
-    def __init__(self, *payloads):
-        self.payloads = list(payloads)
-        self.calls = []
-        rec = self
-
-        class Models:
-            async def generate_content(self, *a, **k):
-                rec.calls.append(k)
-                payload = rec.payloads.pop(0)
-
-                class R:
-                    text = json.dumps(payload)
-                    usage_metadata = None
-                return R()
-
-        class Aio:
-            models = Models()
-        self.aio = Aio()
 
 
 def review_payload(**over):
@@ -58,8 +36,16 @@ def review_payload(**over):
     return p
 
 
-async def _reviewed_essay(client, monkeypatch, *extra_payloads):
-    rec = _Recorder(review_payload(), *extra_payloads)
+def router_for(payload, pairs=None, patterns=None):
+    """Main call gets the payload without errors; the detector gets its suggestions; the verifier accepts all."""
+    main = {k: v for k, v in payload.items() if k not in ("suggestions", "recurring_patterns")}
+    return Router(main=main, detect={"suggestions": payload.get("suggestions", [])},
+                  verify=accept_all(len(payload.get("suggestions", [])), patterns), pairs=pairs)
+
+
+async def _reviewed_essay(client, monkeypatch, *pair_payloads):
+    rec = router_for(review_payload(), pairs=list(pair_payloads) or None,
+                     patterns=[{"pattern": "관사 누락", "ids": ["c2", "c9"], "fix": "the internet", "tip": "t"}])
     monkeypatch.setattr(gemini_service, "_client", rec)
     e = (await client.post("/api/essays", json={"prompt": "Work?", "essay_type": "free"})).json()
     await client.patch(f"/api/essays/{e['id']}", json={"content": CONTENT})
@@ -71,8 +57,8 @@ async def _reviewed_essay(client, monkeypatch, *extra_payloads):
 async def test_unlocatable_suggestions_and_examples_are_dropped(client, monkeypatch):
     _, body, _ = await _reviewed_essay(client, monkeypatch)
     assert "hallucinated phrase" not in [s["original_phrase"] for s in body["suggestions"]]
-    assert [p["pattern"] for p in body["recurring_patterns"]] == ["관사 누락"]
-    assert body["recurring_patterns"][0]["examples"] == ["social media and internet"]
+    # A pattern needs two verified corrections behind it; c9 does not exist, so nothing is left.
+    assert body["recurring_patterns"] == []
 
 
 @pytest.mark.anyio
@@ -85,7 +71,7 @@ async def test_corrected_text_is_built_from_accuracy_and_idiom_fixes(client, mon
 async def test_main_review_does_not_produce_sentence_pairs(client, monkeypatch):
     _, body, rec = await _reviewed_essay(client, monkeypatch)
     assert body["sentence_pairs"] == []
-    prompt = rec.calls[0]["contents"]
+    prompt = rec.prompts["main"]
     assert "sentence_pairs" not in prompt
     assert "corrected_text" not in prompt
 
@@ -93,12 +79,15 @@ async def test_main_review_does_not_produce_sentence_pairs(client, monkeypatch):
 @pytest.mark.anyio
 async def test_review_call_is_deterministic_and_essay_comes_last(client, monkeypatch):
     _, _, rec = await _reviewed_essay(client, monkeypatch)
-    call = rec.calls[0]
-    assert call["config"].temperature == 0
-    assert call["config"].thinking_config.thinking_budget == 2048
-    prompt = call["contents"]
+    configs = {role: k["config"] for role, k in rec.calls}
+    assert {role: c.temperature for role, c in configs.items()} == {"main": 0, "detect": 0, "verify": 0}
+    assert configs["main"].thinking_config.thinking_budget == 2048
+    assert configs["detect"].thinking_config.thinking_budget == 2048
     # Static instructions first so the prefix can be cached; the essay is at the very end.
-    assert prompt.rindex(CONTENT) > prompt.index("[JSON 응답 규격]")
+    main = rec.prompts["main"]
+    assert main.rindex(CONTENT) > main.index("[JSON 응답 규격]")
+    detect = rec.prompts["detect"]
+    assert detect.rindex("[S2]") > detect.index("[JSON 응답 규격]")
 
 
 @pytest.mark.anyio
@@ -131,7 +120,7 @@ async def test_sentence_pairs_generated_on_demand_and_cached(client, monkeypatch
 
     r2 = await client.post(f"/api/essays/{essay_id}/sentence-pairs")
     assert r2.json() == pairs
-    assert len(rec.calls) == 2  # review + one pairs call; the second request is served from storage
+    assert rec.count("pairs") == 1  # the second request is served from storage
     saved = (await client.get(f"/api/essays/{essay_id}")).json()
     assert len(saved["review"]["sentence_pairs"]) == 2
 
@@ -152,7 +141,7 @@ async def test_ambiguous_phrases_are_dropped(client, monkeypatch):
         {"original_phrase": "social media and internet", "suggested_phrase": "social media and the internet",
          "tier": "accuracy", "category": "Grammar", "subcategory": "관사", "explanation": "x"},
     ], recurring_patterns=[])
-    monkeypatch.setattr(gemini_service, "_client", _Recorder(payload))
+    monkeypatch.setattr(gemini_service, "_client", router_for(payload))
     e = (await client.post("/api/essays", json={"prompt": "Web?", "essay_type": "free"})).json()
     body = (await client.post("/api/review", json={"essay_id": e["id"], "content": content})).json()
     assert [s["original_phrase"] for s in body["suggestions"]] == ["social media and internet"]
@@ -161,9 +150,9 @@ async def test_ambiguous_phrases_are_dropped(client, monkeypatch):
 
 def test_prompt_asks_for_unique_phrases_and_specific_patterns():
     import inspect
-    src = inspect.getsource(gemini_service.review_essay)
-    assert "한 번만" in src
-    assert "구체적" in src
+    from app.services import review_prompts
+    assert "한 번만" in inspect.getsource(review_prompts.build_detect_prompt)
+    assert "구체적" in inspect.getsource(review_prompts.build_verify_prompt)
 
 
 @pytest.mark.anyio
@@ -176,7 +165,7 @@ async def test_concurrent_sentence_pair_requests_generate_once(client, monkeypat
     )
     assert r1.status_code == r2.status_code == 200
     assert r1.json() == r2.json()
-    assert len(rec.calls) == 2  # review + exactly one pairs generation
+    assert rec.count("pairs") == 1  # exactly one pairs generation
 
 
 class _RawRecorder:

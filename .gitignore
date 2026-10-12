@@ -28,3 +28,7 @@ data/*.json
 .idea/
 .vscode/
 *.swp
+
+# Review comparison runs and call metrics (contain essay text)
+data/eval/
+data/review_metrics.jsonl

@@ -1,7 +1,10 @@
+import asyncio
 import json
 import logging
 import re
+import time
 import uuid
+from datetime import datetime, timezone
 from typing import Optional, List
 from google import genai
 from google.genai import types
@@ -12,6 +15,7 @@ from app.schemas.review import (
 )
 from app.schemas.anki import CardPreviewResponse, CardType
 from app.services.text_utils import apply_suggestions, split_sentences
+from app.services.review_prompts import build_main_prompt, build_detect_prompt, build_verify_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,21 @@ ESSAY_TYPE_GUIDE = {
 
 MAX_SUGGESTION_WORDS = 12
 REVIEW_THINKING_BUDGET = 2048
+DETECT_THINKING_BUDGET = 2048
+VERIFY_THINKING_BUDGET = 1024
+
+
+def record_metric(row: dict) -> None:
+    """Append one JSON line to the review metrics file (never fails the review)."""
+    path = settings.REVIEW_METRICS_PATH
+    if not path:
+        return
+    try:
+        row = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), **row}
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError as e:
+        logger.warning(f"Could not write review metrics: {e}")
 
 
 _CONTRACTIONS = [
@@ -170,9 +189,14 @@ class GeminiService:
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
         return self._client
 
-    async def _generate_json(self, prompt: str, temperature: float, thinking_budget: int = 0) -> dict:
-        """Call Gemini in JSON mode; a response that is not valid JSON is retried once."""
+    async def _generate_json(self, prompt: str, temperature: float, thinking_budget: int = 0,
+                             label: str = "", essay_id: str = "") -> dict:
+        """Call Gemini in JSON mode; a response that is not valid JSON is retried once.
+
+        When label is given, the call's time and token counts are appended to the metrics file.
+        """
         for attempt in range(2):
+            started = time.monotonic()
             response = await self.client.aio.models.generate_content(
                 model=settings.GEMINI_MODEL,
                 contents=prompt,
@@ -182,6 +206,16 @@ class GeminiService:
                     thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
                 )
             )
+            if label:
+                usage = getattr(response, "usage_metadata", None)
+                record_metric({
+                    "label": label, "essay_id": essay_id, "attempt": attempt + 1,
+                    "seconds": round(time.monotonic() - started, 2),
+                    "input_tokens": getattr(usage, "prompt_token_count", None),
+                    "output_tokens": getattr(usage, "candidates_token_count", None),
+                    "thinking_tokens": getattr(usage, "thoughts_token_count", None),
+                    "model": settings.GEMINI_MODEL,
+                })
             try:
                 return json.loads(response.text or "{}")
             except json.JSONDecodeError:
@@ -189,184 +223,195 @@ class GeminiService:
                     raise
                 logger.warning("Gemini returned malformed JSON; retrying once")
 
-    def _find_exact_offsets(self, text: str, phrase: str, existing_spans: List[tuple]) -> tuple[int, int]:
-        """Locates the exact start and end char offsets of a phrase in text without overlapping."""
+    def _find_exact_offsets(self, text: str, phrase: str, existing_spans: List[tuple],
+                            start: int = 0, end: Optional[int] = None) -> tuple[int, int]:
+        """Offsets of the first occurrence of phrase in text[start:end] that does not overlap existing spans."""
         if not phrase or not text:
             return -1, -1
-        
-        start = 0
-        while True:
-            idx = text.find(phrase, start)
-            if idx == -1:
-                break
-            end = idx + len(phrase)
-            overlap = any(not (end <= s or idx >= e) for s, e in existing_spans)
-            if not overlap:
-                return idx, end
-            start = idx + 1
-        
-        pattern = re.escape(phrase)
-        for match in re.finditer(pattern, text, re.IGNORECASE):
-            idx, end = match.start(), match.end()
-            overlap = any(not (end <= s or idx >= e) for s, e in existing_spans)
-            if not overlap:
-                return idx, end
-
+        end = len(text) if end is None else end
+        window = text[start:end]
+        for flags in (0, re.IGNORECASE):
+            for match in re.finditer(re.escape(phrase), window, flags):
+                idx, stop = start + match.start(), start + match.end()
+                if not any(not (stop <= s or idx >= e) for s, e in existing_spans):
+                    return idx, stop
         return -1, -1
 
-    async def review_essay(self, essay_id: str, prompt_text: str, essay_type: str, content: str) -> ReviewResponse:
-        """Reviews an essay for output practice: bands, recurring patterns, inline fixes, a C1+ rewrite.
+    def _locate(self, content: str, spans: List[tuple], sentence, phrase: str,
+                matched: List[tuple]) -> tuple[int, int]:
+        """Position of a candidate: inside its numbered sentence, or anywhere if the phrase is unique."""
+        try:
+            n = int(sentence)
+        except (TypeError, ValueError):
+            n = 0
+        if 1 <= n <= len(spans):
+            a, b = spans[n - 1]
+            return self._find_exact_offsets(content, phrase, matched, a, b)
+        # No usable sentence number: only a phrase that occurs once can be pinned down.
+        if content.count(phrase) != 1:
+            return -1, -1
+        return self._find_exact_offsets(content, phrase, matched)
 
-        Sentence-by-sentence pairs and the corrected full text are not generated here
-        (see generate_sentence_pairs / apply_suggestions), which keeps the output small.
+    def _candidates(self, content: str, spans: List[tuple], raw: list) -> tuple[List[SuggestionItem], int]:
+        """Turn detected errors into located suggestions (ids c1, c2, ...). Returns (located, dropped)."""
+        located: List[SuggestionItem] = []
+        matched: List[tuple] = []
+        dropped = 0
+        for item in raw or []:
+            if not isinstance(item, dict):
+                continue
+            orig = str(item.get("original_phrase", "")).strip()
+            suggested = str(item.get("suggested_phrase", "")).strip()
+            # Phrase-level fixes only; no-op edits and contraction expansions are not corrections.
+            if not orig or len(orig.split()) > MAX_SUGGESTION_WORDS:
+                dropped += 1
+                continue
+            if suggested == orig or is_contraction_only(orig, suggested):
+                continue
+            start_idx, end_idx = self._locate(content, spans, item.get("sentence"), orig, matched)
+            if start_idx == -1:
+                dropped += 1  # not in that sentence: cannot be applied and may be hallucinated
+                continue
+            matched.append((start_idx, end_idx))
+
+            cat = item.get("category", "Grammar")
+            if cat not in ["Grammar", "Spelling", "Clarity", "Natural Expression", "Vocabulary"]:
+                cat = "Grammar"
+            tier = item.get("tier", "accuracy")
+            if tier not in ["accuracy", "idiom", "style"]:
+                tier = ("accuracy" if cat in ["Grammar", "Spelling"]
+                        else "idiom" if cat in ["Vocabulary", "Natural Expression"] else "style")
+
+            located.append(SuggestionItem(
+                id=f"c{len(located) + 1}",
+                original_phrase=content[start_idx:end_idx],
+                suggested_phrase=suggested,
+                category=cat,
+                subcategory=item.get("subcategory", "기타 문법"),
+                tier=tier,
+                explanation=item.get("explanation", ""),
+                start_idx=start_idx,
+                end_idx=end_idx,
+                is_applied=False,
+            ))
+        return located, dropped
+
+    async def _verify(self, essay_id: str, prompt_text: str, content: str, spans: List[tuple],
+                      candidates: List[SuggestionItem]) -> tuple[List[SuggestionItem], List[RecurringPattern], bool]:
+        """Keep only the candidates the verifier accepts and group them into patterns.
+
+        Returns (kept, patterns, verified). If the verifier answer is unusable, all candidates are
+        kept and verified is False, so a failed check never silently wipes the corrections.
+        """
+        if not candidates:
+            return [], [], True
+        try:
+            data = await self._generate_json(build_verify_prompt(prompt_text, content, spans, candidates), 0,
+                                             thinking_budget=VERIFY_THINKING_BUDGET, label="verify", essay_id=essay_id)
+        except Exception as e:
+            logger.warning(f"Verification call failed; keeping unverified candidates: {e}")
+            return candidates, [], False
+        verdicts = data.get("verdicts") if isinstance(data, dict) else None
+        if not isinstance(verdicts, list):
+            logger.warning("Verification answer had no verdicts; keeping unverified candidates")
+            return candidates, [], False
+
+        accepted = {str(v.get("id")) for v in verdicts if isinstance(v, dict) and v.get("valid") is True}
+        kept = [c for c in candidates if c.id in accepted]
+        by_id = {c.id: c for c in kept}
+
+        patterns: List[RecurringPattern] = []
+        for p in data.get("patterns") or []:
+            if not isinstance(p, dict) or not str(p.get("pattern", "")).strip():
+                continue
+            raw_ids = p.get("ids") or []
+            if isinstance(raw_ids, str):
+                raw_ids = [raw_ids]
+            ids = []
+            for i in raw_ids:
+                i = str(i)
+                if i in by_id and i not in ids:
+                    ids.append(i)
+            if len(ids) < 2:
+                continue  # a pattern needs at least two verified corrections behind it
+            patterns.append(RecurringPattern(
+                pattern=str(p["pattern"]).strip(),
+                count=len(ids),
+                examples=[by_id[i].original_phrase for i in ids],
+                fix=str(p.get("fix", "")),
+                tip=str(p.get("tip", "")),
+            ))
+        return kept, patterns[:4], True
+
+    async def _find_errors(self, essay_id: str, prompt_text: str, content: str, spans: List[tuple]):
+        data = await self._generate_json(build_detect_prompt(prompt_text, content, spans), 0,
+                                         thinking_budget=DETECT_THINKING_BUDGET, label="detect", essay_id=essay_id)
+        candidates, dropped = self._candidates(content, spans, data.get("suggestions"))
+        kept, patterns, verified = await self._verify(essay_id, prompt_text, content, spans, candidates)
+        return candidates, dropped, kept, patterns, verified
+
+    async def review_essay(self, essay_id: str, prompt_text: str, essay_type: str, content: str) -> ReviewResponse:
+        """Reviews an essay for output practice.
+
+        Two branches run at the same time:
+        - main: bands, argument feedback, revision focus, the C1+ rewrite and key expressions;
+        - errors: find errors sentence by sentence -> verify each -> group verified ones into patterns.
+        Sentence pairs and the corrected full text are not generated by the model
+        (see generate_sentence_pairs / apply_suggestions).
         """
         type_guide = ESSAY_TYPE_GUIDE.get(essay_type, ESSAY_TYPE_GUIDE["free"])
-        # Static instructions first and the essay last, so the shared prefix can be cached.
-        prompt = f"""
-당신은 IELTS Writing Task 2 채점 경험이 많은 영어 코치입니다. 학습자는 토플 100점 수준(B2~C1)의 한국인입니다.
-이 연습의 목적은 형식을 갖춘 글쓰기가 아니라 **영어 출력**, 즉 자기 생각을 영어로 정확하고 자연스럽게 꺼내는 능력입니다.
-서론·결론 유무, 문단 형식, 분량은 감점하지도 지적하지도 않습니다. 피드백의 중심은 언어입니다. 칭찬보다 구체적이고 냉정하게.
-
-[점검 절차] 답을 쓰기 전에 에세이를 첫 문장부터 마지막 문장까지 한 문장씩 점검하세요.
-문장마다 주어-동사 수일치, 관사(가산명사 단수, the internet처럼 관용적으로 the가 붙는 명사), 동사 형태(to부정사/동명사,
-사역·지각동사 구문), 전치사, 단어 선택(한국어 직역)을 확인하고, 발견한 오류는 하나도 빠짐없이 suggestions에 넣습니다.
-
-[출력 지침]
-1. rubric: IELTS 4개 기준 각각 0~9 밴드(0.5 단위) + 한국어 한 줄 코멘트. overall_band는 4개 평균을 0.5 단위로 반올림.
-   - task_response: 질문에 답했는가, 하고 싶은 말(입장과 근거)이 분명히 전달되는가
-   - coherence: 문장과 아이디어가 자연스럽게 이어지는가, 연결어 사용(남용 포함)
-   - lexical: 어휘의 정확성·폭·콜로케이션
-   - grammar: 문법 정확성과 구조의 다양성
-2. argument (한국어, 각 1~2문장): thesis, strongest_point, weakest_point, missing_counterargument,
-   paragraph_comments(문단 번호별 한 줄). 학습자의 예시가 자기 주장과 모순되면 weakest_point에서 그것부터 지적하세요.
-3. recurring_patterns: 같은 오류·한국어 직역 습관이 2번 이상 나오면 묶습니다(최대 4개, 많은 순, 없으면 []).
-   '관사 오류', '직역투' 같은 넓은 범주가 아니라 구체적인 단어·구조 단위로 묶으세요
-   (예: "privacy를 '사생활 내용'의 뜻으로 사용", "'the famous'를 사람 명사로 반복", "가산명사 life 단수에 관사 누락").
-   pattern(한국어 이름), count(실제 횟수), examples(원문에 그대로 있는 구문), fix(영어), tip(한국어 한 문장).
-4. revision_focus: 고쳐 쓸 때 집중할 표현상의 2~3가지(한국어, 각 한 문장).
-5. suggestions (tier 필수):
-   - "accuracy": 명백한 오류 / "idiom": 어색한 직역투·부정확한 단어·콜로케이션 / "style": 더 자연스러운 표현(선택)
-   - original_phrase는 원문에 글자 그대로 있는 2~7단어 구문이며, 에세이 안에서 한 번만 나와야 합니다.
-     같은 단어가 여러 번 나오면 앞뒤 단어를 붙여 위치를 특정하세요(예: 'internet' 대신 'social media and internet').
-     문장 전체를 바꾸는 제안 금지.
-   - suggested_phrase는 학습자의 단어를 살린 최소 수정이며, 같은 오류가 남아 있으면 안 됩니다.
-   - 같은 오류가 여러 번 나오면 나올 때마다 각각 만드세요. 축약형 풀기·격식 조정 제안은 하지 마세요.
-   - explanation은 한국어 한 문장.
-6. upgraded_text: 같은 입장·논거로 C1+ 필자가 쓴 버전. 좋은 신문 칼럼처럼 정확하고 담백하게.
-   미사여구, 과장된 형용사, IELTS 상투구(foster an environment conducive to, it is undeniable that, plays a pivotal role 등) 금지.
-7. key_expressions: upgraded_text에서 다음 글에 바로 쓸 표현 4~6개. expression(someone/something 대신 A, B, V-ing 표기),
-   meaning(한국어), pos("n","v","adj","adv","idiom","prep","conj" 중 하나)만 쓰세요.
-8. overall_feedback: 한국어 2~3문장(현재 수준, 가장 큰 약점, 다음 한 걸음).
-
-[JSON 응답 규격]
-{{
-  "rubric": {{"task_response": {{"band": 6.5, "comment": "..."}}, "coherence": {{"band": 6.5, "comment": "..."}},
-             "lexical": {{"band": 6.5, "comment": "..."}}, "grammar": {{"band": 6.5, "comment": "..."}}, "overall_band": 6.5}},
-  "argument": {{"thesis": "...", "strongest_point": "...", "weakest_point": "...", "missing_counterargument": "...",
-               "paragraph_comments": [{{"paragraph": 1, "comment": "..."}}]}},
-  "recurring_patterns": [{{"pattern": "...", "count": 2, "examples": ["..."], "fix": "...", "tip": "..."}}],
-  "revision_focus": ["..."],
-  "suggestions": [{{"original_phrase": "...", "suggested_phrase": "...", "tier": "accuracy", "category": "Grammar", "subcategory": "관사(Article)", "explanation": "..."}}],
-  "upgraded_text": "...",
-  "key_expressions": [{{"expression": "...", "meaning": "...", "pos": "v"}}],
-  "overall_feedback": "..."
-}}
-
-[에세이 유형]: {type_guide}
-[에세이 문제]: {prompt_text}
-[학습자 에세이]:
-\"\"\"{content}\"\"\"
-"""
+        spans = split_sentences(content)
+        started = time.monotonic()
         try:
-            data = await self._generate_json(prompt, 0, thinking_budget=REVIEW_THINKING_BUDGET)
-
-            processed_suggestions: List[SuggestionItem] = []
-            matched_spans: List[tuple] = []
-
-            for item in data.get("suggestions", []):
-                orig = item.get("original_phrase", "").strip()
-                # Inline suggestions are phrase-level fixes; sentence rewrites belong in upgraded_text.
-                if not orig or len(orig.split()) > MAX_SUGGESTION_WORDS:
-                    continue
-                suggested = item.get("suggested_phrase", "").strip()
-                # No-op edits and contraction expansions are not corrections in output practice.
-                if suggested == orig or is_contraction_only(orig, suggested):
-                    continue
-                # A phrase that occurs more than once cannot be pinned to one place;
-                # applying it to the wrong occurrence would corrupt correct text.
-                if content.count(orig) > 1:
-                    continue
-                start_idx, end_idx = self._find_exact_offsets(content, orig, matched_spans)
-                if start_idx == -1:
-                    continue  # not in the essay: cannot be applied and may be hallucinated
-                matched_spans.append((start_idx, end_idx))
-
-                cat = item.get("category", "Grammar")
-                if cat not in ["Grammar", "Spelling", "Clarity", "Natural Expression", "Vocabulary"]:
-                    cat = "Grammar"
-
-                tier = item.get("tier", "accuracy")
-                if tier not in ["accuracy", "idiom", "style"]:
-                    if cat in ["Grammar", "Spelling"]:
-                        tier = "accuracy"
-                    elif cat in ["Vocabulary", "Natural Expression"]:
-                        tier = "idiom"
-                    else:
-                        tier = "style"
-
-                processed_suggestions.append(SuggestionItem(
-                    id=str(uuid.uuid4())[:8],
-                    original_phrase=orig,
-                    suggested_phrase=suggested,
-                    category=cat,
-                    subcategory=item.get("subcategory", "기타 문법"),
-                    tier=tier,
-                    explanation=item.get("explanation", ""),
-                    start_idx=start_idx,
-                    end_idx=end_idx,
-                    is_applied=False
-                ))
-
-            processed_suggestions.sort(key=lambda s: s.start_idx)
-
-            patterns = []
-            for p in parse_patterns(data.get("recurring_patterns")):
-                p.examples = [ex for ex in p.examples if ex in content]
-                if p.examples:
-                    patterns.append(p)
-
-            key_exprs = [
-                KeyExpression(
-                    expression=normalize_vocab_placeholders(k.get("expression", "").strip()),
-                    meaning=k.get("meaning", "").strip(),
-                    pos=(k.get("pos") or "idiom").strip(),
-                    synonyms=k.get("synonyms", "").strip(),
-                    example=clean_vocab_example(k.get("example", "").strip()),
-                    explanation=k.get("explanation", "").strip()
-                )
-                for k in data.get("key_expressions", [])
-                if k.get("expression")
-            ]
-
-            corrected = apply_suggestions(content, processed_suggestions)
-            return ReviewResponse(
-                essay_id=essay_id,
-                original_text=content,
-                corrected_text=corrected,
-                upgraded_text=data.get("upgraded_text") or corrected,
-                overall_feedback=data.get("overall_feedback", ""),
-                rubric=parse_rubric(data.get("rubric") or {}),
-                argument=parse_argument(data.get("argument") or {}),
-                revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
-                recurring_patterns=patterns,
-                suggestions=processed_suggestions,
-                sentence_pairs=[],
-                key_expressions=key_exprs
+            data, (candidates, dropped, suggestions, patterns, verified) = await asyncio.gather(
+                self._generate_json(build_main_prompt(type_guide, prompt_text, content), 0,
+                                    thinking_budget=REVIEW_THINKING_BUDGET, label="main", essay_id=essay_id),
+                self._find_errors(essay_id, prompt_text, content, spans),
             )
-
         except Exception as e:
             logger.error(f"Gemini review error: {e}", exc_info=True)
             raise GeminiError(str(e)) from e
+
+        record_metric({
+            "label": "summary", "essay_id": essay_id, "seconds": round(time.monotonic() - started, 2),
+            "sentences": len(spans), "candidates": len(candidates), "dropped_unlocated": dropped,
+            "kept": len(suggestions), "rejected": len(candidates) - len(suggestions) if verified else 0,
+            "patterns": len(patterns), "verified": verified,
+        })
+
+        suggestions.sort(key=lambda s: s.start_idx)
+        for s in suggestions:
+            s.id = str(uuid.uuid4())[:8]
+
+        key_exprs = [
+            KeyExpression(
+                expression=normalize_vocab_placeholders(k.get("expression", "").strip()),
+                meaning=k.get("meaning", "").strip(),
+                pos=(k.get("pos") or "idiom").strip(),
+                synonyms=k.get("synonyms", "").strip(),
+                example=clean_vocab_example(k.get("example", "").strip()),
+                explanation=k.get("explanation", "").strip()
+            )
+            for k in data.get("key_expressions", [])
+            if isinstance(k, dict) and k.get("expression")
+        ]
+
+        corrected = apply_suggestions(content, suggestions)
+        return ReviewResponse(
+            essay_id=essay_id,
+            original_text=content,
+            corrected_text=corrected,
+            upgraded_text=data.get("upgraded_text") or corrected,
+            overall_feedback=data.get("overall_feedback", ""),
+            rubric=parse_rubric(data.get("rubric") or {}),
+            argument=parse_argument(data.get("argument") or {}),
+            revision_focus=[str(x) for x in (data.get("revision_focus") or []) if str(x).strip()][:3],
+            recurring_patterns=patterns,
+            suggestions=suggestions,
+            sentence_pairs=[],
+            key_expressions=key_exprs,
+            suggestions_verified=verified,
+        )
 
     async def generate_sentence_pairs(self, review: ReviewResponse) -> List[SentencePair]:
         """Sentence-by-sentence study pairs, generated only when the user opens that tab.
