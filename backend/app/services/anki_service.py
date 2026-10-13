@@ -3,7 +3,9 @@ import re
 import logging
 from typing import Optional, Dict, Any, List
 from app.core.config import settings
-from app.schemas.anki import AnkiStatusResponse, AnkiActionResponse, SentenceCardRequest, VocabCardRequest
+from app.schemas.anki import (
+    AnkiStatusResponse, AnkiActionResponse, GrammarCardRequest, SentenceCardRequest, VocabCardRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 # these constants only shape what we send and how we pre-check duplicates.
 SENTENCE_DECK, SENTENCE_MODEL = "1. Language::1.1. English::Sentence", "English Sentence"
 VOCAB_DECK, VOCAB_MODEL = "1. Language::1.1. English::Vocabulary", "English Vocabulary"
+GRAMMAR_DECK, GRAMMAR_MODEL = "1. Language::1.1. English::Grammar", "English Grammar"
 ALLOWED_POS = {"n", "v", "adj", "adv", "idiom"}
 CARD_TAG = "daily-english-essay"
 TUNNEL_DOWN = ("오라클 서버 Anki에 연결할 수 없습니다. SSH 터널(Projects/infra/anki_tunnel)이 "
@@ -73,6 +76,13 @@ class AnkiService:
         url = f"{settings.ANKI_GATEWAY_URL}/api/cards/{kind}"
         try:
             resp = requests.post(url, json=payload, timeout=60)
+            if resp.status_code == 400:  # the gateway refused the card and says why
+                try:
+                    reason = resp.json().get("detail")
+                except Exception:
+                    reason = None
+                if reason:
+                    return AnkiActionResponse(success=False, error=str(reason))
             resp.raise_for_status()
             body = resp.json()
         except requests.exceptions.ConnectionError:
@@ -127,6 +137,26 @@ class AnkiService:
             "pos": pos if pos in ALLOWED_POS else "",
             "auto_enrich": True,
             "generate_audio": True,
+        })
+
+    def add_grammar_card(self, req: GrammarCardRequest) -> AnkiActionResponse:
+        """Grammar multiple-choice card via the gateway: the answer is blanked, my mistake is a wrong option.
+
+        The gateway checks the blank, fills translation/explanation/other options under its rules,
+        and refuses cards whose four options are not distinct.
+        """
+        sentence, answer = req.sentence.strip(), req.answer.strip()
+        if not sentence or not answer:
+            return AnkiActionResponse(success=False, error="문장과 정답이 모두 필요합니다.")
+        blocked = self._precheck(GRAMMAR_DECK, GRAMMAR_MODEL, {"문장": sentence, "정답": answer},
+                                 "이미 Anki에 등록된 문법 문장입니다.")
+        if blocked:
+            return blocked
+        mistake = req.mistake.strip()
+        return self._gateway_add("grammar", {
+            "sentence": sentence,
+            "answer": answer,
+            "distractors": [mistake] if mistake else [],
         })
 
     def _reason_when_down(self) -> str:

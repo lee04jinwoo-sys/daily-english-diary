@@ -1,5 +1,6 @@
 import React from 'react';
 import { ReviewResponse, CardType, RecurringPattern, ReviewPart } from '../../types/essay';
+import { GrammarCardDraft, grammarDraft, isGrammarFix } from '../../utils/cardText';
 import { MessageSquare, Target, RotateCcw, Scale, Repeat, BookmarkPlus, Loader2 } from 'lucide-react';
 
 interface EssayFeedbackProps {
@@ -7,6 +8,7 @@ interface EssayFeedbackProps {
   pendingParts?: ReviewPart[];
   onRevise: () => void;
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
+  onOpenGrammarModal: (draft: GrammarCardDraft) => void;
 }
 
 const CRITERIA: Array<{ key: 'task_response' | 'coherence' | 'lexical' | 'grammar'; label: string; short: string; part: ReviewPart }> = [
@@ -23,7 +25,7 @@ const PART_LABELS: Record<ReviewPart, string> = {
   language_scores: '문법·어휘 점수',
 };
 
-export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingParts = [], onRevise, onOpenAnkiModal }) => {
+export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingParts = [], onRevise, onOpenAnkiModal, onOpenGrammarModal }) => {
   const { rubric, argument } = review;
   const isPending = (part: ReviewPart) => pendingParts.includes(part);
   const scoresPending = isPending('content_scores') || isPending('language_scores');
@@ -35,6 +37,9 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingPar
     const pair = (review.sentence_pairs || []).find((sp) => p.examples.some((ex) => sp.original.includes(ex)));
     return pair?.corrected || p.fix;
   };
+  // A pattern's grammar card comes from the first grammar fix that corrected one of its examples.
+  const grammarFixFor = (p: RecurringPattern) =>
+    (review.suggestions || []).find((s) => isGrammarFix(s) && p.examples.some((ex) => ex.includes(s.original_phrase) || s.original_phrase.includes(ex)));
   const argumentRows = [
     { label: '입장(Thesis)', value: argument.thesis },
     { label: '가장 강한 부분', value: argument.strongest_point },
@@ -87,6 +92,16 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingPar
               )}
               <div className="flex items-end justify-between gap-2">
                 {p.tip && <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">💡 {p.tip}</p>}
+                <div className="shrink-0 flex items-center gap-1">
+                {grammarFixFor(p) && (
+                  <button
+                    onClick={() => onOpenGrammarModal(grammarDraft(review.original_text, grammarFixFor(p)!))}
+                    className="flex items-center space-x-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/50 px-2 py-1 rounded-md transition-colors"
+                  >
+                    <BookmarkPlus className="w-3.5 h-3.5" />
+                    <span>문법 카드</span>
+                  </button>
+                )}
                 <button
                   onClick={() => onOpenAnkiModal('sentence', cardTextFor(p), p.tip)}
                   className="shrink-0 flex items-center space-x-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 px-2 py-1 rounded-md transition-colors"
@@ -94,6 +109,7 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingPar
                   <BookmarkPlus className="w-3.5 h-3.5" />
                   <span>Anki 카드</span>
                 </button>
+                </div>
               </div>
             </div>
           ))}

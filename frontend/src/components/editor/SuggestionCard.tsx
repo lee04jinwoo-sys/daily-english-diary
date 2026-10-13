@@ -9,6 +9,8 @@ interface SuggestionCardProps {
   /** The learner's whole sentence with this fix applied (sentence cards must be complete sentences). */
   sentenceForCard: string;
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
+  /** Set for grammar fixes: opens the grammar (multiple-choice) card form. */
+  onOpenGrammarCard?: () => void;
 }
 
 export const SuggestionCard: React.FC<SuggestionCardProps> = ({
@@ -17,6 +19,7 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
   onSelect,
   sentenceForCard,
   onOpenAnkiModal,
+  onOpenGrammarCard,
 }) => {
   const getCategoryBadge = () => {
     if (suggestion.tier === 'accuracy') {
@@ -150,6 +153,20 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
             <BookmarkPlus className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
             <span>단어 Anki</span>
           </button>
+
+          {onOpenGrammarCard && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenGrammarCard();
+              }}
+              className="flex items-center space-x-1 text-[11px] text-[#55534e] dark:text-[#a0a0a0] hover:text-violet-700 dark:hover:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/50 px-2 py-1 rounded transition-colors"
+              title="빈칸 객관식 문법 카드로 추가 (내가 쓴 형태가 오답 보기)"
+            >
+              <BookmarkPlus className="w-3 h-3 text-violet-600 dark:text-violet-400" />
+              <span>문법 Anki</span>
+            </button>
+          )}
         </div>
 
       </div>

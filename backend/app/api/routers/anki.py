@@ -4,6 +4,7 @@ from starlette.concurrency import run_in_threadpool
 from app.schemas.anki import (
     AnkiStatusResponse,
     AnkiActionResponse,
+    GrammarCardRequest,
     SentenceCardRequest,
     VocabCardRequest,
     CardPreviewRequest,
@@ -58,5 +59,17 @@ async def add_vocab_card(req: VocabCardRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=res.error or "Anki 단어 카드 등록에 실패했습니다."
+        )
+    return res
+
+
+@router.post("/add-grammar", response_model=AnkiActionResponse)
+async def add_grammar_card(req: GrammarCardRequest):
+    """Adds a grammar multiple-choice card (blanked answer, my mistake as a wrong option)."""
+    res = await run_in_threadpool(anki_service.add_grammar_card, req)
+    if not res.success and not res.duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=res.error or "Anki 문법 카드 등록에 실패했습니다."
         )
     return res

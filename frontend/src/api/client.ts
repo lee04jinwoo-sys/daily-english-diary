@@ -151,6 +151,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  addGrammarCard: (data: { sentence: string; answer: string; mistake: string }) =>
+    fetchJson<AnkiActionResponse>('/anki/add-grammar', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   addVocabCard: (data: {
     word: string;
     meaning?: string;

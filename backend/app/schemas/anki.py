@@ -17,6 +17,11 @@ class VocabCardRequest(BaseModel):
     example: Optional[str] = Field(default="", description="Ignored")
     explanation: Optional[str] = Field(default="", description="Ignored")
 
+class GrammarCardRequest(BaseModel):
+    sentence: str = Field(..., description="Corrected full sentence")
+    answer: str = Field(..., description="The corrected phrase; blanked on the card front")
+    mistake: str = Field(default="", description="What the learner actually wrote; kept as a wrong option")
+
 class CardPreviewRequest(BaseModel):
     card_type: CardType
     text: str = Field(..., description="Sentence or word to make into card")

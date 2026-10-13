@@ -32,6 +32,8 @@ def gateway(monkeypatch):
     sent = []
 
     class Resp:
+        status_code = 200
+
         def __init__(self, body):
             self._body = body
 
@@ -88,3 +90,46 @@ def test_gateway_down_is_an_error_not_a_direct_write(fake_anki, monkeypatch):
     res = anki_service.add_sentence_card(SentenceCardRequest(sentence="I agree.", translation="t"))
     assert not res.success and "Anki Manager" in res.error
     assert "addNote" not in fake_anki["calls"]
+
+
+# ---------- grammar cards ----------
+
+from app.schemas.anki import GrammarCardRequest  # noqa: E402
+
+
+def test_grammar_card_sends_my_mistake_as_a_wrong_option(fake_anki, gateway):
+    res = anki_service.add_grammar_card(GrammarCardRequest(
+        sentence="I am looking forward to meeting you.", answer="meeting", mistake="meet"))
+    assert res.success and res.note_id == 123
+    url, body = gateway[0]
+    assert url.endswith("/api/cards/grammar")
+    assert body["sentence"] == "I am looking forward to meeting you."
+    assert body["answer"] == "meeting" and body["distractors"] == ["meet"]
+    assert "addNote" not in fake_anki["calls"]
+
+
+def test_grammar_card_without_a_mistake_lets_the_gateway_make_all_options(fake_anki, gateway):
+    anki_service.add_grammar_card(GrammarCardRequest(sentence="It is a book.", answer="a", mistake="  "))
+    assert gateway[0][1]["distractors"] == []
+
+
+def test_grammar_duplicate_never_reaches_gateway(fake_anki, gateway):
+    fake_anki["dup"] = True
+    res = anki_service.add_grammar_card(GrammarCardRequest(sentence="I agree.", answer="agree", mistake="agrees"))
+    assert res.success and res.duplicate
+    assert gateway == []
+
+
+def test_gateway_refusal_reason_is_shown(fake_anki, monkeypatch):
+    class Resp:
+        status_code = 400
+
+        def raise_for_status(self):
+            raise anki_module.requests.exceptions.HTTPError("400 Client Error: Bad Request")
+
+        def json(self):
+            return {"detail": "정답 'the'이(가) 문장에 2번 나옵니다."}
+
+    monkeypatch.setattr(anki_module.requests, "post", lambda url, json, timeout: Resp())
+    res = anki_service.add_grammar_card(GrammarCardRequest(sentence="The cat saw the dog.", answer="the", mistake="a"))
+    assert not res.success and "2번 나옵니다" in res.error

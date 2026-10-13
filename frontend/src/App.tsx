@@ -16,6 +16,8 @@ import { Header, AppView } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { GrammarlyEditor } from './components/editor/GrammarlyEditor';
 import { AnkiCardModal } from './components/anki/AnkiCardModal';
+import { GrammarCardModal } from './components/anki/GrammarCardModal';
+import { GrammarCardDraft } from './utils/cardText';
 import { EssayCalendar } from './components/calendar/EssayCalendar';
 import { StatsDashboard } from './components/stats/StatsDashboard';
 import { TopicPicker } from './components/topic/TopicPicker';
@@ -71,6 +73,8 @@ export function App() {
     text: '',
     context: '',
   });
+
+  const [grammarDraft, setGrammarDraft] = useState<GrammarCardDraft | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -316,6 +320,7 @@ export function App() {
             reviewResult={reviewResult}
             suggestions={suggestions}
             onOpenAnkiModal={handleOpenAnkiModal}
+            onOpenGrammarModal={setGrammarDraft}
             onShowToast={showToast}
           />
         )}
@@ -332,6 +337,13 @@ export function App() {
           <StatsDashboard stats={stats} onOpenAnkiModal={handleOpenAnkiModal} />
         )}
       </div>
+
+      <GrammarCardModal
+        draft={grammarDraft}
+        onClose={() => setGrammarDraft(null)}
+        ankiStatus={ankiStatus}
+        onCardAdded={showToast}
+      />
 
       {/* Anki Card Preview & Edit Modal */}
       <AnkiCardModal

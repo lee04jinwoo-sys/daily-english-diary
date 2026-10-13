@@ -8,6 +8,7 @@ import { EssayPromptHeader } from './EssayPromptHeader';
 import { EssayFeedback } from './EssayFeedback';
 import { useWritingTimer, formatDuration, IDLE_LIMIT_MS } from '../../hooks/useWritingTimer';
 import { api } from '../../api/client';
+import { GrammarCardDraft, correctedSentence, grammarDraft, isGrammarFix } from '../../utils/cardText';
 import { 
   Sparkles, 
   BookOpen, 
@@ -35,6 +36,7 @@ interface GrammarlyEditorProps {
   reviewResult: ReviewResponse | null;
   suggestions: SuggestionItem[];
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
+  onOpenGrammarModal: (draft: GrammarCardDraft) => void;
   onShowToast: (msg: string) => void;
 }
 
@@ -51,6 +53,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   reviewResult,
   suggestions,
   onOpenAnkiModal,
+  onOpenGrammarModal,
   onShowToast,
 }) => {
   const essayId = essay.id;
@@ -267,20 +270,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   const pendingSuggestions = suggestions.filter((s) => content.includes(s.original_phrase));
 
   // The learner's whole sentence (as reviewed) with one fix applied, for sentence cards.
-  const sentenceForCard = (sg: SuggestionItem): string => {
-    const text = reviewResult?.original_text || '';
-    if (sg.start_idx < 0 || text.slice(sg.start_idx, sg.end_idx) !== sg.original_phrase) return sg.suggested_phrase;
-    const re = /[^.!?\n]+[.!?]*/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text))) {
-      const start = m.index;
-      const end = start + m[0].length;
-      if (sg.start_idx >= start && sg.end_idx <= end) {
-        return (text.slice(start, sg.start_idx) + sg.suggested_phrase + text.slice(sg.end_idx, end)).trim();
-      }
-    }
-    return sg.suggested_phrase;
-  };
+  const sentenceForCard = (sg: SuggestionItem): string => correctedSentence(reviewResult?.original_text || '', sg);
 
   // Render Clean Interactive Document with Grammarly Highlights
   const renderInteractiveDocument = () => {
@@ -548,7 +538,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
             {/* AI Review Summary / Feedback & Key Expressions */}
             {reviewResult && (
               <div className="space-y-4 pt-2">
-                <EssayFeedback review={reviewResult} pendingParts={pendingParts} onRevise={onRevise} onOpenAnkiModal={onOpenAnkiModal} />
+                <EssayFeedback review={reviewResult} pendingParts={pendingParts} onRevise={onRevise} onOpenAnkiModal={onOpenAnkiModal} onOpenGrammarModal={onOpenGrammarModal} />
 
                 {/* Key Expressions Extracted */}
                 {reviewResult.key_expressions && reviewResult.key_expressions.length > 0 && (
@@ -654,6 +644,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                     }}
                     sentenceForCard={sentenceForCard(item)}
                     onOpenAnkiModal={onOpenAnkiModal}
+                    onOpenGrammarCard={isGrammarFix(item) ? () => onOpenGrammarModal(grammarDraft(reviewResult?.original_text || '', item)) : undefined}
                   />
                 </div>
               ))
