@@ -95,7 +95,7 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingPar
                 <div className="shrink-0 flex items-center gap-1">
                 {grammarFixFor(p) && (
                   <button
-                    onClick={() => onOpenGrammarModal(grammarDraft(review.original_text, grammarFixFor(p)!))}
+                    onClick={() => onOpenGrammarModal(grammarDraft(review.original_text, review.suggestions || [], grammarFixFor(p)!))}
                     className="flex items-center space-x-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/50 px-2 py-1 rounded-md transition-colors"
                   >
                     <BookmarkPlus className="w-3.5 h-3.5" />

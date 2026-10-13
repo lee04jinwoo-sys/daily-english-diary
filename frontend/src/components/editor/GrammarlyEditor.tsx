@@ -644,7 +644,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                     }}
                     sentenceForCard={sentenceForCard(item)}
                     onOpenAnkiModal={onOpenAnkiModal}
-                    onOpenGrammarCard={isGrammarFix(item) ? () => onOpenGrammarModal(grammarDraft(reviewResult?.original_text || '', item)) : undefined}
+                    onOpenGrammarCard={isGrammarFix(item) ? () => onOpenGrammarModal(grammarDraft(reviewResult?.original_text || '', suggestions, item)) : undefined}
                   />
                 </div>
               ))
