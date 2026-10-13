@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import { Topic, ESSAY_TYPE_LABELS, CATEGORY_LABELS } from '../../types/essay';
+import { Topic, ESSAY_TYPE_LABELS, CATEGORY_LABELS, THEME_LABELS } from '../../types/essay';
 import { Shuffle, PenLine, Loader2, Lightbulb } from 'lucide-react';
 
 interface TopicPickerProps {
@@ -43,7 +43,7 @@ export const TopicPicker: React.FC<TopicPickerProps> = ({ onStart }) => {
         <div className="space-y-1">
           <h1 className="font-serif font-bold text-2xl text-stone-900 dark:text-stone-100">오늘의 에세이</h1>
           <p className="text-xs text-stone-500 dark:text-stone-400">
-            아직 쓰지 않은 주제 중에서 고릅니다. 직전 에세이와 다른 유형이 나오고, 일반 · 내 분야 · 시사를 5 : 3 : 2 비율로 섞습니다.
+            IELTS Task 2 기출 약 1,900문항 중 아직 쓰지 않은 주제를 고릅니다. 유형은 고르게 섞고, 직전 에세이와 다른 유형 · 다른 테마가 나옵니다.
           </p>
         </div>
 
@@ -64,6 +64,14 @@ export const TopicPicker: React.FC<TopicPickerProps> = ({ onStart }) => {
                 <span className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-[#2a2a2a] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-[#383838]">
                   {CATEGORY_LABELS[topic.category]}
                 </span>
+                {topic.theme && (
+                  <span className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-[#2a2a2a] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-[#383838]">
+                    {THEME_LABELS[topic.theme] ?? topic.theme}
+                  </span>
+                )}
+                {!!topic.essays && topic.essays > 1 && (
+                  <span className="ml-auto font-normal text-stone-400 dark:text-stone-500">수험자 {topic.essays}명이 쓴 주제</span>
+                )}
               </div>
               <p className={`font-serif text-lg leading-relaxed text-[#1c1b18] dark:text-[#f0f0f0] transition-opacity ${loading ? 'opacity-40' : ''}`}>
                 {topic.prompt}

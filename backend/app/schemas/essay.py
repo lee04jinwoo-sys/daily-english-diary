@@ -3,8 +3,10 @@ from pydantic import BaseModel, Field
 
 from app.schemas.review import ReviewResponse
 
-EssayType = Literal["agree_disagree", "discuss_both", "adv_disadv", "problem_solution", "hypothetical", "free"]
-EssayCategory = Literal["general", "domain", "issues", "free"]
+EssayType = Literal["agree_disagree", "discuss_both", "adv_disadv", "problem_solution", "two_part",
+                    "hypothetical", "free"]
+# general/domain/issues: essays from the earlier hand-made bank; new bank topics are "ielts".
+EssayCategory = Literal["ielts", "general", "domain", "issues", "free"]
 
 
 class EssayCreateRequest(BaseModel):
@@ -66,3 +68,5 @@ class TopicResponse(BaseModel):
     category: EssayCategory
     type: EssayType
     prompt: str
+    theme: Optional[str] = None
+    essays: int = Field(default=0, description="How many test takers in the source dataset wrote on this question")

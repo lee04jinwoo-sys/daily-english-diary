@@ -6,32 +6,28 @@ import pytest
 
 from app.services import topic_service as topic_module
 from app.services.gemini_service import gemini_service
-from app.services.topic_service import ESSAY_TYPES, CATEGORIES, load_topics, pick_topic
+from app.services.topic_service import ESSAY_TYPES, THEMES, load_topics, pick_topic
 
 
-# ---------- topic bank ----------
+# ---------- topic bank (IELTS Task 2 questions, see scripts/build_ielts_topics.py) ----------
 
 def test_topic_bank_is_well_formed():
     topics = load_topics()
-    assert len(topics) >= 100
+    assert len(topics) >= 1000
     ids = [t["id"] for t in topics]
     assert len(ids) == len(set(ids)), "topic ids must be unique"
     for t in topics:
-        assert t["type"] in ESSAY_TYPES and t["type"] != "free"
-        assert t["category"] in CATEGORIES
-        assert len(t["prompt"]) > 20
+        assert t["type"] in ESSAY_TYPES and t["type"] not in ("free", "hypothetical")
+        assert t["category"] == "ielts"
+        assert t["theme"] in THEMES
+        assert len(t["prompt"]) >= 60 and t["essays"] >= 1
+    # every Task 2 type is in the bank
+    assert {t["type"] for t in topics} == {"agree_disagree", "discuss_both", "adv_disadv", "problem_solution",
+                                           "two_part"}
 
-    by_cat = Counter(t["category"] for t in topics)
-    n = len(topics)
-    assert by_cat["general"] / n >= 0.4
-    assert by_cat["domain"] / n >= 0.25
-    assert by_cat["issues"] / n >= 0.15
-    # every essay type is practiced in every category
-    pairs = {(t["category"], t["type"]) for t in topics}
-    for c in CATEGORIES:
-        for ty in ESSAY_TYPES:
-            if ty != "free":
-                assert (c, ty) in pairs, f"missing {c}/{ty}"
+
+def _topic(i, type_, theme="education"):
+    return {"id": f"t{i}", "category": "ielts", "type": type_, "theme": theme, "prompt": f"Prompt {i}?", "essays": 1}
 
 
 def test_pick_topic_skips_used_and_excluded():
@@ -49,24 +45,28 @@ def test_pick_topic_recycles_when_bank_exhausted():
     assert picked is not None
 
 
-def test_pick_topic_avoids_last_type():
+def test_pick_topic_avoids_last_type_and_theme():
     topics = load_topics()
     for seed in range(30):
         picked = pick_topic(topics, used_ids=set(), exclude_ids=set(), last_type="agree_disagree",
-                            rng=random.Random(seed))
-        assert picked["type"] != "agree_disagree"
+                            last_theme="education", rng=random.Random(seed))
+        assert picked["type"] != "agree_disagree" and picked["theme"] != "education"
 
 
-def test_pick_topic_follows_category_weights():
-    topics = load_topics()
+def test_pick_topic_balances_types_not_bank_share():
+    # 90% of this bank is agree_disagree; suggestions should still spread across types.
+    topics = [_topic(i, "agree_disagree") for i in range(90)] + [_topic(100 + i, "two_part") for i in range(10)]
     rng = random.Random(42)
-    counts = Counter(
-        pick_topic(topics, used_ids=set(), exclude_ids=set(), last_type=None, rng=rng)["category"]
-        for _ in range(3000)
-    )
-    assert 0.44 < counts["general"] / 3000 < 0.56
-    assert 0.24 < counts["domain"] / 3000 < 0.36
-    assert 0.15 < counts["issues"] / 3000 < 0.25
+    counts = Counter(pick_topic(topics, used_ids=set(), exclude_ids=set(), last_type=None, rng=rng)["type"]
+                     for _ in range(2000))
+    assert 0.4 < counts["two_part"] / 2000 < 0.6
+
+
+def test_pick_topic_falls_back_when_only_last_theme_is_left():
+    topics = [_topic(1, "two_part", "education")]
+    picked = pick_topic(topics, used_ids=set(), exclude_ids=set(), last_type="two_part", last_theme="education",
+                        rng=random.Random(0))
+    assert picked["id"] == "t1"
 
 
 @pytest.mark.anyio

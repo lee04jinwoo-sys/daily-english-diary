@@ -4,13 +4,17 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-TOPICS_PATH = Path(__file__).resolve().parent.parent / "data" / "topics.json"
+# IELTS Task 2 questions from the btnotpt/ielts_task_2 dataset (Apache-2.0), cleaned by
+# scripts/build_ielts_topics.py. `essays` is how many test takers in the dataset wrote on it.
+TOPICS_PATH = Path(__file__).resolve().parent.parent / "data" / "ielts_topics.json"
 
-# Each type trains different structures: concession/rebuttal, balanced summary,
-# weighing, cause-effect, conditionals. "free" is the user's own topic.
-ESSAY_TYPES = ["agree_disagree", "discuss_both", "adv_disadv", "problem_solution", "hypothetical", "free"]
-CATEGORIES = ["general", "domain", "issues"]
-CATEGORY_WEIGHTS = {"general": 0.5, "domain": 0.3, "issues": 0.2}
+# Each type trains different structures: concession/rebuttal, balanced summary, weighing,
+# cause-effect, answering two questions. "hypothetical" and the old categories only remain
+# on essays written from the earlier hand-made bank; "free" is the user's own topic.
+ESSAY_TYPES = ["agree_disagree", "discuss_both", "adv_disadv", "problem_solution", "two_part", "hypothetical", "free"]
+BANK_TYPES = ["agree_disagree", "discuss_both", "adv_disadv", "problem_solution", "two_part"]
+THEMES = ["education", "technology", "work", "environment", "health", "society", "government",
+          "crime", "culture", "family", "media", "transport", "economy", "science", "travel", "sport"]
 
 
 @lru_cache(maxsize=1)
@@ -23,15 +27,23 @@ def load_topics() -> list[dict]:
     return list(_load_topics_cached())
 
 
+def theme_of(topic_id: Optional[str]) -> Optional[str]:
+    if not topic_id:
+        return None
+    return next((t["theme"] for t in _load_topics_cached() if t["id"] == topic_id), None)
+
+
 def pick_topic(
     topics: list[dict],
     used_ids: set,
     exclude_ids: set,
     last_type: Optional[str],
     rng: random.Random,
+    last_theme: Optional[str] = None,
 ) -> Optional[dict]:
-    """Pick an unwritten topic: category by weight, avoiding the last essay's type when possible.
+    """Pick an unwritten topic: a type chosen evenly, not the last essay's type or theme when possible.
 
+    Types are drawn evenly because the source bank is mostly agree/disagree questions.
     When every topic has been written, the bank recycles instead of running dry.
     """
     pool = [t for t in topics if t["id"] not in used_ids and t["id"] not in exclude_ids]
@@ -40,15 +52,14 @@ def pick_topic(
     if not pool:
         return None
 
-    if last_type:
-        fresh_type = [t for t in pool if t["type"] != last_type]
-        if fresh_type:
-            pool = fresh_type
+    for key, last in (("type", last_type), ("theme", last_theme)):
+        if last:
+            fresh = [t for t in pool if t.get(key) != last]
+            if fresh:
+                pool = fresh
 
-    by_cat: dict[str, list[dict]] = {}
+    by_type: dict[str, list[dict]] = {}
     for t in pool:
-        by_cat.setdefault(t["category"], []).append(t)
-    cats = list(by_cat)
-    weights = [CATEGORY_WEIGHTS.get(c, 0.1) for c in cats]
-    cat = rng.choices(cats, weights=weights, k=1)[0]
-    return rng.choice(by_cat[cat])
+        by_type.setdefault(t["type"], []).append(t)
+    type_ = rng.choice(sorted(by_type))
+    return rng.choice(by_type[type_])

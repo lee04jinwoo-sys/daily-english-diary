@@ -16,13 +16,15 @@ async def list_topics():
 
 @router.get("/suggest", response_model=TopicResponse)
 async def suggest_topic(exclude: Optional[str] = Query(default=None, description="Comma-separated topic ids to skip")):
-    """Suggest an unwritten topic, weighted 50/30/20 by category and avoiding the last essay's type."""
+    """Suggest an unwritten IELTS question: types drawn evenly, not the last essay's type or theme."""
     exclude_ids = {x for x in (exclude or "").split(",") if x}
+    last_type, last_topic_id = await essay_service.last_essay_topic()
     topic = topic_service.pick_topic(
         topic_service.load_topics(),
         used_ids=await essay_service.used_topic_ids(),
         exclude_ids=exclude_ids,
-        last_type=await essay_service.last_essay_type(),
+        last_type=last_type,
+        last_theme=topic_service.theme_of(last_topic_id),
         rng=random.Random(),
     )
     if not topic:

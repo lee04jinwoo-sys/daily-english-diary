@@ -167,11 +167,12 @@ class EssayService:
             rows = await (await db.execute("SELECT DISTINCT topic_id FROM essays WHERE topic_id IS NOT NULL")).fetchall()
         return {r[0] for r in rows}
 
-    async def last_essay_type(self) -> Optional[str]:
+    async def last_essay_topic(self) -> tuple[Optional[str], Optional[str]]:
+        """(essay_type, topic_id) of the most recent essay, or (None, None)."""
         async with _connect() as db:
             row = await (await db.execute(
-                "SELECT essay_type FROM essays ORDER BY created_at DESC LIMIT 1")).fetchone()
-        return row[0] if row else None
+                "SELECT essay_type, topic_id FROM essays ORDER BY created_at DESC LIMIT 1")).fetchone()
+        return (row[0], row[1]) if row else (None, None)
 
     async def save_suggestions(self, essay_id: str, suggestions: List[SuggestionItem]) -> None:
         now = datetime.datetime.now().isoformat()

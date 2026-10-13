@@ -49,25 +49,35 @@ export type EssayType =
   | 'discuss_both'
   | 'adv_disadv'
   | 'problem_solution'
+  | 'two_part'
   | 'hypothetical'
   | 'free';
 
-export type EssayCategory = 'general' | 'domain' | 'issues' | 'free';
+// general/domain/issues: essays from the earlier hand-made bank; new bank topics are 'ielts'.
+export type EssayCategory = 'ielts' | 'general' | 'domain' | 'issues' | 'free';
 
 export const ESSAY_TYPE_LABELS: Record<EssayType, string> = {
   agree_disagree: '찬반',
   discuss_both: '양쪽 견해',
   adv_disadv: '장단점',
   problem_solution: '원인·해결',
+  two_part: '두 질문',
   hypothetical: '가정',
   free: '자유 주제',
 };
 
 export const CATEGORY_LABELS: Record<EssayCategory, string> = {
+  ielts: 'IELTS 기출',
   general: '일반',
   domain: '내 분야',
   issues: '시사',
   free: '자유',
+};
+
+export const THEME_LABELS: Record<string, string> = {
+  education: '교육', technology: '기술', work: '일·직업', environment: '환경', health: '건강',
+  society: '사회', government: '정부·정책', crime: '범죄', culture: '문화', family: '가족',
+  media: '미디어', transport: '교통', economy: '경제', science: '과학', travel: '여행', sport: '스포츠',
 };
 
 export interface CriterionScore {
@@ -166,6 +176,8 @@ export interface Topic {
   category: EssayCategory;
   type: EssayType;
   prompt: string;
+  theme?: string | null;
+  essays?: number; // test takers in the source dataset who wrote on it
 }
 
 export type CardType = 'sentence' | 'vocab';
