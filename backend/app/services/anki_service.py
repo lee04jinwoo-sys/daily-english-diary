@@ -104,7 +104,7 @@ class AnkiService:
             return blocked
         return self._gateway_add("sentence", {"sentence": sentence, "translation": req.translation.strip()})
 
-    async def add_vocab_card(self, req: VocabCardRequest) -> AnkiActionResponse:
+    def add_vocab_card(self, req: VocabCardRequest) -> AnkiActionResponse:
         """Adds a vocabulary card via the Anki Manager gateway.
 
         Only word, meaning and POS are sent; the gateway writes example and explanation
@@ -139,13 +139,12 @@ class AnkiService:
             return "tunnel_down"
 
     def get_status(self) -> AnkiStatusResponse:
-        connected = self.check_connection()
-        available_decks: List[str] = []
-        if connected:
-            try:
-                available_decks = self.invoke("deckNames") or []
-            except Exception:
-                pass
+        # deckNames doubles as the connection check: one round trip instead of two.
+        try:
+            available_decks: List[str] = self.invoke("deckNames") or []
+            connected = True
+        except Exception:
+            available_decks, connected = [], False
 
         return AnkiStatusResponse(
             connected=connected,
@@ -175,7 +174,7 @@ class AnkiService:
                 lookups.append(("w", clean_w, norm_w, f'note:"English Vocabulary" "단어:{quote(norm_w)}"'))
 
         existing: Dict[str, List[str]] = {"existing_sentences": [], "existing_words": []}
-        if not lookups or not self.check_connection():
+        if not lookups:
             return existing
         try:
             results = self.invoke("multi", actions=[

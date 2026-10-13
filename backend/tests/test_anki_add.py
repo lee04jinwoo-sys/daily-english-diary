@@ -60,7 +60,7 @@ def test_sentence_goes_through_gateway(fake_anki, gateway):
 
 @pytest.mark.anyio
 async def test_vocab_sends_only_word_meaning_pos(fake_anki, gateway):
-    res = await anki_service.add_vocab_card(VocabCardRequest(
+    res = anki_service.add_vocab_card(VocabCardRequest(
         word="stem from something", meaning="~에서 유래하다/기인하다", pos="prep",
         synonyms="originate from", example="Ex.", explanation="3-step explanation"))
     assert res.success
