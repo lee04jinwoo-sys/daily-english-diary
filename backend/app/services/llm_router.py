@@ -5,8 +5,8 @@ Same design as Anki Manager's core/llm_router.py, made async. Every route is an 
 so with no keys set nothing changes. 429, 5xx, timeouts, connection errors and broken JSON all move on
 to the next route.
 
-The default model names were not checked against each provider's docs (unverified); adjust after
-comparing quality.
+Model names for Gemini and Groq were confirmed against each provider's live model list and one test
+call; the Cerebras name was not (no key to test with). Quality is only compared on a single word.
 """
 import json
 import logging
@@ -31,10 +31,16 @@ class Route:
 
 GEMINI_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# Checked 2026-11-21 with one live JSON call each on the free keys: all four answered 200 with valid
+# Korean JSON. gemini-3.7-flash returned 503 (high demand), and gemini-3.8-flash / gemini-3.5-flash
+# did not answer within 25-30s, so none of those three are used.
 DEFAULT_ROUTES = [
+    Route("gemini-free-lite", GEMINI_OPENAI_URL, "gemini-3.5-flash-lite", "GEMINI_FREE_API_KEY"),
     Route("gemini-free", GEMINI_OPENAI_URL, "gemini-2.5-flash", "GEMINI_FREE_API_KEY"),
-    Route("gemini-free-lite", GEMINI_OPENAI_URL, "gemini-2.5-flash-lite", "GEMINI_FREE_API_KEY"),
-    Route("groq", "https://api.groq.com/openai/v1/chat/completions", "openai/gpt-oss-120b", "GROQ_API_KEY"),
+    Route("groq", GROQ_URL, "openai/gpt-oss-120b", "GROQ_API_KEY"),
+    Route("groq-qwen", GROQ_URL, "qwen/qwen3.8-27b", "GROQ_API_KEY"),
     Route("cerebras", "https://api.cerebras.ai/v1/chat/completions", "gpt-oss-120b", "CEREBRAS_API_KEY"),
 ]
 
