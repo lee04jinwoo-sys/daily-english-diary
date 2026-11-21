@@ -11,7 +11,7 @@ from typing import Optional, List
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.services import llm_router
+from app.services import claude_cli, llm_router
 from app.schemas.review import (
     ReviewResponse, SuggestionItem, KeyExpression, SentencePair, VocabItem,
     EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment, RecurringPattern,
@@ -24,6 +24,9 @@ from app.services.review_prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The calls of one essay review; with REVIEW_BACKEND=claude_cli only these go to the Claude CLI.
+REVIEW_LABELS = {"main", "detect", "verify", "score_content", "score_language"}
 
 def normalize_vocab_placeholders(word: str) -> str:
     """Normalize placeholders like someone, something, sb, sth to A, B, C and doing to V-ing."""
@@ -224,6 +227,25 @@ class GeminiService:
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
         return self._client
 
+    async def _generate_json_cli(self, prompt: str, label: str, essay_id: str) -> dict:
+        """A review call on the local Claude CLI. No fallback to Gemini: it would mix two models' scores."""
+        for attempt in range(2):
+            started = time.monotonic()
+            try:
+                data, usage = await claude_cli.generate_json(prompt, settings.CLAUDE_REVIEW_MODEL)
+            except json.JSONDecodeError:
+                if attempt == 1:
+                    raise
+                logger.warning("Claude CLI returned malformed JSON; retrying once")
+                continue
+            record_metric({
+                "label": label, "essay_id": essay_id, "attempt": attempt + 1,
+                "seconds": round(time.monotonic() - started, 2),
+                "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"],
+                "thinking_tokens": usage["thinking_tokens"], "model": settings.CLAUDE_REVIEW_MODEL,
+            })
+            return data
+
     async def _generate_json(self, prompt: str, temperature: float, thinking_budget: int = 0,
                              label: str = "", essay_id: str = "", free_first: bool = False) -> dict:
         """Call Gemini in JSON mode; a response that is not valid JSON is retried once.
@@ -238,6 +260,8 @@ class GeminiService:
                 return data
             except llm_router.AllRoutesFailed as e:
                 logger.warning(f"Free routes failed, using the paid key: {e}")
+        if label in REVIEW_LABELS and settings.REVIEW_BACKEND == "claude_cli":
+            return await self._generate_json_cli(prompt, label, essay_id)
         for attempt in range(2):
             started = time.monotonic()
             response = await self.client.aio.models.generate_content(

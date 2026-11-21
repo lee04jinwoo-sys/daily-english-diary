@@ -32,3 +32,9 @@ def no_free_llm_keys(monkeypatch):
     """Free-route keys in .env must never make a test call the network."""
     for key in ("GEMINI_FREE_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
         monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def review_on_gemini_by_default(monkeypatch):
+    """Existing tests fake the Gemini client; tests of the Claude CLI backend switch it on themselves."""
+    monkeypatch.setattr(settings, "REVIEW_BACKEND", "gemini")

@@ -39,6 +39,10 @@ class Settings(BaseModel):
     PORT: int = Field(default_factory=lambda: int(os.getenv("PORT", "8000")))
     DATABASE_PATH: Path = Field(default_factory=lambda: Path(os.getenv("ESSAY_DB_PATH") or DB_PATH))
     GEMINI_MODEL: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.8-flash"))
+    # Essay review (error detection, scoring, feedback) runs on the local `claude -p` CLI, i.e. the Claude
+    # subscription; "gemini" sends it to the paid Gemini key instead. Band scores of the two are not comparable.
+    REVIEW_BACKEND: str = Field(default_factory=lambda: os.getenv("REVIEW_BACKEND", "claude_cli"))
+    CLAUDE_REVIEW_MODEL: str = Field(default_factory=lambda: os.getenv("CLAUDE_REVIEW_MODEL", "claude-haiku-5-5"))
     # One JSON line per Gemini call of a review (label, seconds, tokens) and one summary line per review.
     REVIEW_METRICS_PATH: Optional[Path] = Field(default_factory=lambda: DATA_DIR / "review_metrics.jsonl")
 
