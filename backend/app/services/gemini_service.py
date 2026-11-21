@@ -11,6 +11,7 @@ from typing import Optional, List
 from google import genai
 from google.genai import types
 from app.core.config import settings
+from app.services import llm_router
 from app.schemas.review import (
     ReviewResponse, SuggestionItem, KeyExpression, SentencePair, VocabItem,
     EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment, RecurringPattern,
@@ -224,11 +225,19 @@ class GeminiService:
         return self._client
 
     async def _generate_json(self, prompt: str, temperature: float, thinking_budget: int = 0,
-                             label: str = "", essay_id: str = "") -> dict:
+                             label: str = "", essay_id: str = "", free_first: bool = False) -> dict:
         """Call Gemini in JSON mode; a response that is not valid JSON is retried once.
 
         When label is given, the call's time and token counts are appended to the metrics file.
+        free_first tries the free-tier routes (llm_router) before the paid key. Only for work that
+        does not feed scoring, so band scores always come from one model.
         """
+        if free_first:
+            try:
+                data, _ = await llm_router.generate_json(prompt, temperature)
+                return data
+            except llm_router.AllRoutesFailed as e:
+                logger.warning(f"Free routes failed, using the paid key: {e}")
         for attempt in range(2):
             started = time.monotonic()
             response = await self.client.aio.models.generate_content(
@@ -549,7 +558,7 @@ class GeminiService:
 {review.upgraded_text}
 """
         try:
-            data = await self._generate_json(prompt, 0.2)
+            data = await self._generate_json(prompt, 0.2, free_first=True)
         except Exception as e:
             logger.error(f"Sentence pair generation error: {e}", exc_info=True)
             raise GeminiError(str(e)) from e
@@ -603,7 +612,7 @@ class GeminiService:
 반드시 유효한 JSON 형식으로만 응답하십시오.
 """
         try:
-            data = await self._generate_json(prompt, 0.2)
+            data = await self._generate_json(prompt, 0.2, free_first=True)
             return {
                 "word": data.get("word", norm_word),
                 "phonetic": data.get("phonetic", ""),
@@ -641,7 +650,7 @@ JSON 응답 규격:
 }}
 """
             try:
-                res = await self._generate_json(prompt, 0.2)
+                res = await self._generate_json(prompt, 0.2, free_first=True)
                 return CardPreviewResponse(
                     card_type="sentence",
                     deck_name="1. Language::1.1. English::Sentence",
@@ -697,7 +706,7 @@ JSON 응답 규격:
 }}
 """
             try:
-                res = await self._generate_json(prompt, 0.2)
+                res = await self._generate_json(prompt, 0.2, free_first=True)
                 return CardPreviewResponse(
                     card_type="vocab",
                     deck_name="1. Language::1.1. English::Vocabulary",

@@ -25,3 +25,10 @@ async def fresh_db(tmp_path, monkeypatch):
 async def client(fresh_db):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture(autouse=True)
+def no_free_llm_keys(monkeypatch):
+    """Free-route keys in .env must never make a test call the network."""
+    for key in ("GEMINI_FREE_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
