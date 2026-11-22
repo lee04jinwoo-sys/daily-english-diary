@@ -18,6 +18,7 @@ import { GrammarlyEditor } from './components/editor/GrammarlyEditor';
 import { AnkiCardModal } from './components/anki/AnkiCardModal';
 import { GrammarCardModal } from './components/anki/GrammarCardModal';
 import { GrammarCardDraft } from './utils/cardText';
+import { DARK_QUERY, ThemePref, loadThemePref, nextThemePref, resolveTheme, saveThemePref } from './utils/theme';
 import { EssayCalendar } from './components/calendar/EssayCalendar';
 import { StatsDashboard } from './components/stats/StatsDashboard';
 import { TopicPicker } from './components/topic/TopicPicker';
@@ -40,23 +41,26 @@ export function App() {
   const [streak, setStreak] = useState<number>(0);
   const [stats, setStats] = useState<StatsResponse | null>(null);
 
-  // Theme State
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('theme');
-      if (saved) return saved === 'dark';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    } catch {
-      return false;
-    }
-  });
-
-  // Keep DOM and localStorage in sync
+  // Theme: 'system' (default) follows the OS setting live; light/dark are explicit choices.
+  const [themePref, setThemePref] = useState<ThemePref>(() => loadThemePref());
+  const [systemDark, setSystemDark] = useState<boolean>(() => window.matchMedia?.(DARK_QUERY).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(DARK_QUERY);
+    if (!mq) return;
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const isDarkMode = resolveTheme(themePref, systemDark) === 'dark';
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
     document.body.classList.toggle('dark', isDarkMode);
-    try { localStorage.setItem('theme', isDarkMode ? 'dark' : 'light'); } catch {}
   }, [isDarkMode]);
+  const cycleTheme = () => {
+    const next = nextThemePref(themePref);
+    setThemePref(next);
+    saveThemePref(next); // only a click stores anything, so 'system' keeps following the OS
+  };
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -318,8 +322,9 @@ export function App() {
         activeView={activeView}
         onViewChange={(v) => setActiveView(v === 'editor' && !currentEssay ? 'topic' : v)}
         streak={streak}
+        themePref={themePref}
         isDarkMode={isDarkMode}
-        onToggleDarkMode={() => setIsDarkMode((prev) => !prev)}
+        onCycleTheme={cycleTheme}
         isCompleted={currentEssay?.is_completed ?? false}
         onToggleComplete={currentEssay ? () => handleToggleComplete() : undefined}
       />

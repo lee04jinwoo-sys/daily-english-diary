@@ -10,10 +10,18 @@ import {
   BookOpen, 
   Flame,
   Sun,
-  Moon
+  Moon,
+  Monitor
 } from 'lucide-react';
+import { ThemePref } from '../../utils/theme';
 
 export type AppView = 'topic' | 'editor' | 'calendar' | 'stats';
+
+const THEME_TITLES: Record<ThemePref, string> = {
+  system: '테마: 시스템 설정 따름 (클릭하면 라이트)',
+  light: '테마: 라이트 (클릭하면 다크)',
+  dark: '테마: 다크 (클릭하면 시스템 설정)',
+};
 
 interface HeaderProps {
   ankiStatus: AnkiStatus | null;
@@ -23,8 +31,9 @@ interface HeaderProps {
   activeView: AppView;
   onViewChange: (view: AppView) => void;
   streak: number;
+  themePref: ThemePref;
   isDarkMode: boolean;
-  onToggleDarkMode: () => void;
+  onCycleTheme: () => void;
   isCompleted?: boolean;
   onToggleComplete?: () => void;
 }
@@ -37,8 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
   activeView,
   onViewChange,
   streak,
+  themePref,
   isDarkMode,
-  onToggleDarkMode,
+  onCycleTheme,
   isCompleted = false,
   onToggleComplete,
 }) => {
@@ -173,18 +183,20 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Dark Mode Toggle Button */}
+        {/* Theme: system (follows macOS) -> light -> dark */}
         <button
           type="button"
-          onClick={onToggleDarkMode}
+          onClick={onCycleTheme}
           className="p-1.5 rounded-lg bg-[#efeee9] dark:bg-[#2a2a2a] hover:bg-[#e2e1db] dark:hover:bg-[#383838] text-stone-700 dark:text-amber-300 border border-[#e2e1db] dark:border-[#3a3a3a] transition-all shadow-xs shrink-0 cursor-pointer"
-          title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
-          aria-label={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
+          title={THEME_TITLES[themePref]}
+          aria-label={THEME_TITLES[themePref]}
         >
-          {isDarkMode ? (
-            <Sun className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+          {themePref === 'system' ? (
+            <Monitor className={`w-4 h-4 ${isDarkMode ? 'text-stone-300' : 'text-stone-700'}`} />
+          ) : isDarkMode ? (
+            <Moon className="w-4 h-4 text-amber-300" />
           ) : (
-            <Moon className="w-4 h-4 text-stone-700" />
+            <Sun className="w-4 h-4 text-amber-500 fill-amber-500/20" />
           )}
         </button>
 
