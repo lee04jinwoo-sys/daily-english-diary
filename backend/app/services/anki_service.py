@@ -159,6 +159,26 @@ class AnkiService:
             "distractors": [mistake] if mistake else [],
         })
 
+    def undo_card(self, note_id: int) -> AnkiActionResponse:
+        """Deletes one note by id, but only a card this app made that was never studied.
+
+        Deleting by matching text once removed old cards with review history that the app never
+        created, so every check below must pass or nothing is deleted.
+        """
+        try:
+            info = (self.invoke("notesInfo", notes=[note_id]) or [{}])[0]
+            if not info:
+                return AnkiActionResponse(success=False, error="Anki에서 해당 카드를 찾을 수 없습니다 (이미 지워졌을 수 있습니다).")
+            if info.get("modelName") not in (SENTENCE_MODEL, VOCAB_MODEL, GRAMMAR_MODEL) or CARD_TAG not in (info.get("tags") or []):
+                return AnkiActionResponse(success=False, error="이 앱이 만든 카드가 아니라서 지우지 않습니다. Anki에서 직접 지워주세요.")
+            cards = self.invoke("cardsInfo", cards=info.get("cards") or [])
+            if not cards or any(c.get("reps", 0) > 0 or c.get("type", 0) != 0 for c in cards):
+                return AnkiActionResponse(success=False, error="이미 복습한 기록이 있는 카드라서 지우지 않습니다. Anki에서 직접 지워주세요.")
+            self.invoke("deleteNotes", notes=[note_id])
+        except Exception as e:
+            return AnkiActionResponse(success=False, error=f"Anki 카드 취소 실패: {e}")
+        return AnkiActionResponse(success=True, message="Anki에서 카드를 지웠습니다.")
+
     def _reason_when_down(self) -> str:
         """AnkiConnect did not answer: is the tunnel down, or only the server's Anki?"""
         try:

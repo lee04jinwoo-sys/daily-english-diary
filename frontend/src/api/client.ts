@@ -151,6 +151,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  // Deletes a card this app just created; the server refuses anything it did not make or that was studied.
+  undoAnkiCard: (noteId: number) =>
+    fetchJson<AnkiActionResponse>('/anki/undo-card', {
+      method: 'POST',
+      body: JSON.stringify({ note_id: noteId }),
+    }),
   addGrammarCard: (data: { sentence: string; answer: string; mistake: string }) =>
     fetchJson<AnkiActionResponse>('/anki/add-grammar', {
       method: 'POST',

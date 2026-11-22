@@ -78,6 +78,8 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
   const [playingKey, setPlayingKey] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
+  // note ids of cards created in this session; only these can be cancelled
+  const [noteIds, setNoteIds] = useState<Record<string, number>>({});
   const [existingSentences, setExistingSentences] = useState<Set<string>>(new Set());
   const [existingWords, setExistingWords] = useState<Set<string>>(new Set());
 
@@ -128,6 +130,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     setEditedData({});
     setEditingKey(null);
     setSavedKeys(new Set());
+    setNoteIds({});
   }, [essayId]);
 
   // Sync edited data with pairs
@@ -211,7 +214,29 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     setSavingKey(key);
     try {
       if (isAlreadySaved) {
-        onShowToast('이미 Anki에 있는 문장입니다.');
+        const noteId = noteIds[key];
+        if (!noteId) {
+          onShowToast('이전에 등록한 카드는 Anki에서 직접 지워주세요.');
+        } else if (window.confirm('Anki에서 이 카드를 지울까요?')) {
+          const res = await api.undoAnkiCard(noteId);
+          if (res.success) {
+            setSavedKeys((prev) => {
+              const next = new Set(prev);
+              next.delete(key);
+              return next;
+            });
+            setExistingSentences((prev) => {
+              const next = new Set(prev);
+              next.delete(cleanSentence.toLowerCase());
+              return next;
+            });
+            setNoteIds((prev) => {
+              const { [key]: _removed, ...rest } = prev;
+              return rest;
+            });
+            onShowToast('Anki에서 카드를 지웠습니다.');
+          }
+        }
       } else {
         // Add to Anki
         const res = await api.addSentenceCard({
@@ -221,6 +246,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
 
         if (res.success) {
           setSavedKeys((prev) => new Set(prev).add(key));
+          if (res.note_id) setNoteIds((prev) => ({ ...prev, [key]: res.note_id as number }));
           setExistingSentences((prev) => new Set(prev).add(cleanSentence.toLowerCase()));
           onShowToast(res.duplicate ? '이미 Anki에 등록된 문장입니다 (중복 방지)' : 'Anki 등록 완료! 🎉');
         } else {
@@ -501,7 +527,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                           ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                           : 'bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 border-transparent'
                       }`}
-                      title={isCorrSaved ? '이미 Anki에 있음' : 'Anki 문장 카드로 저장'}
+                      title={isCorrSaved ? (noteIds[corrKey] ? '클릭하면 Anki에서 지웁니다' : '이미 Anki에 있음') : 'Anki 문장 카드로 저장'}
                     >
                       {isCorrSaving ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -510,7 +536,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                       ) : (
                         <BookmarkPlus className="w-3.5 h-3.5" />
                       )}
-                      <span>{isCorrSaving ? '처리 중' : isCorrSaved ? '등록됨 ✓ (취소)' : '⭐ Anki 등록'}</span>
+                      <span>{isCorrSaving ? '처리 중' : isCorrSaved ? (noteIds[corrKey] ? '등록됨 ✓ (취소)' : '등록됨 ✓') : '⭐ Anki 등록'}</span>
                     </button>
                   </div>
                 </div>
@@ -598,7 +624,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                             ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                             : 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
                         }`}
-                        title={isCorrSaved ? '이미 Anki에 있음' : 'Anki 교정본 카드로 저장'}
+                        title={isCorrSaved ? (noteIds[corrKey] ? '클릭하면 Anki에서 지웁니다' : '이미 Anki에 있음') : 'Anki 교정본 카드로 저장'}
                       >
                         {isCorrSaving ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -607,7 +633,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                         ) : (
                           <BookmarkPlus className="w-3.5 h-3.5" />
                         )}
-                        <span>{isCorrSaving ? '처리 중' : isCorrSaved ? '등록됨 ✓ (취소)' : '⭐ 교정본 Anki'}</span>
+                        <span>{isCorrSaving ? '처리 중' : isCorrSaved ? (noteIds[corrKey] ? '등록됨 ✓ (취소)' : '등록됨 ✓') : '⭐ 교정본 Anki'}</span>
                       </button>
                     </div>
                   </div>
@@ -687,7 +713,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                               ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-700'
                               : 'bg-blue-600 hover:bg-blue-700 text-white border-transparent'
                           }`}
-                          title={isNatSaved ? '이미 Anki에 있음' : 'Anki 원어민 카드로 저장'}
+                          title={isNatSaved ? (noteIds[natKey] ? '클릭하면 Anki에서 지웁니다' : '이미 Anki에 있음') : 'Anki 원어민 카드로 저장'}
                         >
                           {isNatSaving ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -696,7 +722,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                           ) : (
                             <Sparkles className="w-3.5 h-3.5" />
                           )}
-                          <span>{isNatSaving ? '처리 중' : isNatSaved ? '등록됨 ✓ (취소)' : '✨ 원어민 Anki'}</span>
+                          <span>{isNatSaving ? '처리 중' : isNatSaved ? (noteIds[natKey] ? '등록됨 ✓ (취소)' : '등록됨 ✓') : '✨ 원어민 Anki'}</span>
                         </button>
                       </div>
                     </div>

@@ -11,6 +11,7 @@ from app.schemas.anki import (
     CardPreviewResponse,
     CheckExistingCardsRequest,
     CheckExistingCardsResponse,
+    UndoCardRequest,
 )
 from app.services.anki_service import anki_service
 from app.services.gemini_service import gemini_service
@@ -71,5 +72,17 @@ async def add_grammar_card(req: GrammarCardRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=res.error or "Anki 문법 카드 등록에 실패했습니다."
+        )
+    return res
+
+
+@router.post("/undo-card", response_model=AnkiActionResponse)
+async def undo_card(req: UndoCardRequest):
+    """Deletes a card this app just created (app tag, never studied); refuses anything else."""
+    res = await run_in_threadpool(anki_service.undo_card, req.note_id)
+    if not res.success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=res.error or "Anki 카드 취소에 실패했습니다."
         )
     return res

@@ -38,6 +38,9 @@ class CardPreviewResponse(BaseModel):
     pos: str
     synonyms: str
 
+class UndoCardRequest(BaseModel):
+    note_id: int
+
 class AnkiActionResponse(BaseModel):
     success: bool
     note_id: Optional[int] = None
