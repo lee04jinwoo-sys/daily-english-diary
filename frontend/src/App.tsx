@@ -43,10 +43,10 @@ export function App() {
 
   // Theme: 'system' (default) follows the OS setting live; light/dark are explicit choices.
   const [themePref, setThemePref] = useState<ThemePref>(() => loadThemePref());
-  const [systemDark, setSystemDark] = useState<boolean>(() => window.matchMedia?.(DARK_QUERY).matches ?? false);
+  const [systemDark, setSystemDark] = useState<boolean>(() => window.matchMedia?.(DARK_QUERY)?.matches ?? false);
   useEffect(() => {
     const mq = window.matchMedia?.(DARK_QUERY);
-    if (!mq) return;
+    if (!mq?.addEventListener) return;
     const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
