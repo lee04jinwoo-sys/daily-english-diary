@@ -35,6 +35,8 @@ export interface GrammarCardDraft {
   explanation?: string;
   /** The correction this card tests; sent with the card so it can be tagged and found again. */
   fixId?: string;
+  /** Korean translation checked against the sentence (prepare-grammar-cards); sent as the card's 해설. */
+  translation?: string;
 }
 
 const isWord = (c: string | undefined) => !!c && /[A-Za-z0-9']/.test(c);

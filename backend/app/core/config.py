@@ -43,6 +43,9 @@ class Settings(BaseModel):
     # subscription; "gemini" sends it to the paid Gemini key instead. Band scores of the two are not comparable.
     REVIEW_BACKEND: str = Field(default_factory=lambda: os.getenv("REVIEW_BACKEND", "claude_cli"))
     CLAUDE_REVIEW_MODEL: str = Field(default_factory=lambda: os.getenv("CLAUDE_REVIEW_MODEL", "claude-haiku-5-5"))
+    # Grammar cards are fixed and checked by Sonnet before they are added: on 53 real cards it caught
+    # 7/8 remaining grammar errors and 4/4 wrong translations, Haiku 7/8 and 2/4 (2026-11-22).
+    CLAUDE_CARD_MODEL: str = Field(default_factory=lambda: os.getenv("CLAUDE_CARD_MODEL", "claude-sonnet-5-5"))
     # One JSON line per Gemini call of a review (label, seconds, tokens) and one summary line per review.
     REVIEW_METRICS_PATH: Optional[Path] = Field(default_factory=lambda: DATA_DIR / "review_metrics.jsonl")
 

@@ -27,15 +27,47 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
   const [sentence, setSentence] = useState('');
   const [answer, setAnswer] = useState('');
   const [mistake, setMistake] = useState('');
+  const [translation, setTranslation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // The sentence that passed the grammar + translation check (Sonnet); a changed sentence is checked again.
+  const [checkedSentence, setCheckedSentence] = useState<string | null>(null);
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'ok' | 'failed'>('idle');
+  const [checkNote, setCheckNote] = useState('');
+
+  const runCheck = async (s: string, a: string, m: string): Promise<{ sentence: string; translation: string } | null> => {
+    setCheckState('checking');
+    try {
+      const res = await api.prepareGrammarCards([{ id: '0', sentence: s, answer: a, mistake: m }]);
+      const card = res.cards['0'];
+      if (card) {
+        setSentence(card.sentence);
+        setTranslation(card.translation);
+        setCheckedSentence(card.sentence);
+        setCheckState('ok');
+        setCheckNote(card.sentence !== s ? '문장의 오류를 고쳤습니다.' : '');
+        return card;
+      }
+      setCheckState('failed');
+      setCheckNote(res.rejected['0'] || '검사를 통과하지 못했습니다.');
+    } catch (e: any) {
+      setCheckState('failed');
+      setCheckNote(`검사 실패: ${e?.message || '오류'}`);
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (!draft) return;
     setSentence(draft.sentence);
     setAnswer(draft.answer);
     setMistake(draft.mistake);
+    setTranslation('');
+    setCheckedSentence(null);
+    setCheckNote('');
     setErrorMsg(null);
+    runCheck(draft.sentence, draft.answer, draft.mistake);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
   if (!draft) return null;
@@ -55,9 +87,19 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
+      // only a checked sentence goes to Anki; an edited sentence is checked again first
+      let final = { sentence: sentence.trim(), translation: translation.trim() };
+      if (checkedSentence !== final.sentence || !final.translation) {
+        const card = await runCheck(final.sentence, answer.trim(), mistake.trim());
+        if (!card) {
+          setErrorMsg('문장·해설 검사를 통과하지 못해 등록하지 않았습니다. 문장을 고친 뒤 다시 시도하세요.');
+          return;
+        }
+        final = card;
+      }
       const res = await api.addGrammarCard({
-        sentence: sentence.trim(), answer: answer.trim(), mistake: mistake.trim(),
-        essay_id: essayId, fix_id: draft.fixId,
+        sentence: final.sentence, answer: answer.trim(), mistake: mistake.trim(),
+        essay_id: essayId, fix_id: draft.fixId, translation: final.translation,
       });
       if (res.success) {
         if (draft.fixId) onRegistered?.(draft.fixId);
@@ -124,6 +166,15 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
             <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">문장 (교정된 완성 문장)</label>
             <textarea rows={2} value={sentence} onChange={(e) => setSentence(e.target.value)} className={`${inputCls} resize-none`} />
           </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">해설 (한국어 뜻)</label>
+            <textarea rows={2} value={translation} onChange={(e) => setTranslation(e.target.value)} className={`${inputCls} resize-none font-sans`} placeholder={checkState === 'checking' ? '검사 중...' : ''} />
+            <p className={`mt-1 text-[11px] ${checkState === 'failed' ? 'text-amber-700 dark:text-amber-300' : 'text-stone-500 dark:text-stone-400'}`}>
+              {checkState === 'checking' ? '문장 문법과 해설을 검사하는 중... (Sonnet)'
+                : checkState === 'ok' ? `✓ 문법·해설 검사 통과${checkNote ? ` · ${checkNote}` : ''}`
+                : checkState === 'failed' ? `⚠ ${checkNote}` : ''}
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">정답 (빈칸)</label>
@@ -163,7 +214,7 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || !!problem}
+                disabled={isSubmitting || !!problem || checkState === 'checking'}
                 className="px-4 py-2 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 text-xs font-semibold rounded-lg shadow-sm transition-all active:scale-95 disabled:opacity-50 flex items-center space-x-1.5"
               >
                 {isSubmitting ? (

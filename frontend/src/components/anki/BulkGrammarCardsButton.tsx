@@ -18,7 +18,7 @@ interface BulkGrammarCardsButtonProps {
   onShowToast: (msg: string) => void;
 }
 
-type Phase = { kind: 'preparing' } | { kind: 'adding'; done: number; total: number } | null;
+type Phase = { kind: 'preparing' } | { kind: 'checking' } | { kind: 'adding'; done: number; total: number } | null;
 
 /**
  * Adds every grammar card of the essay to Anki in one go, one request after another (Anki handles one
@@ -73,22 +73,49 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
       }
     }
 
-    // 2. one confirmation with everything that will be added
+    // 2. every card is fixed (errors outside the blank), translated, and checked by Sonnet; a card that
+    //    does not pass is not added. Nothing unchecked is added: a failing check stops here.
+    const candidates = [...plan.cards, ...similar];
+    const own: GrammarCardDraft[] = [];
+    const sim: GrammarCardDraft[] = [];
+    const rejected: string[] = [];
+    setPhase({ kind: 'checking' });
+    try {
+      const res = await api.prepareGrammarCards(
+        candidates.map((d, i) => ({ id: String(i), sentence: d.sentence, answer: d.answer, mistake: d.mistake })),
+      );
+      candidates.forEach((d, i) => {
+        const c = res.cards[String(i)];
+        if (c) (i < plan.cards.length ? own : sim).push({ ...d, sentence: c.sentence, translation: c.translation });
+        else rejected.push(`${d.sentence.slice(0, 60)}${d.sentence.length > 60 ? '…' : ''} — ${res.rejected[String(i)] ?? '검사 실패'}`);
+      });
+    } catch (e: any) {
+      setPhase(null);
+      onShowToast(`카드 문장 검사에 실패해 등록하지 않았습니다: ${e?.message || '오류'}`);
+      return;
+    }
+
+    // 3. one confirmation with everything that will be added
     const other = plan.skipped.filter((s) => s.reason !== 'same_sentence').length;
-    const shown = similar.slice(0, 10).map((d) => `· ${d.sentence}`).join('\n');
+    const shown = sim.slice(0, 10).map((d) => `· ${d.sentence}`).join('\n');
     const lines = [
-      `문법 카드를 Anki에 등록할까요?`,
-      `· 내 문장 ${plan.cards.length}장` + (similar.length ? ` + 유사 문장 ${similar.length}장` : ''),
-      similar.length ? `\n유사 문장 (모델이 만든 새 문장):\n${shown}${similar.length > 10 ? `\n… 외 ${similar.length - 10}장` : ''}` : '',
+      `문법 카드를 Anki에 등록할까요? (문장·해설 검사 통과)`,
+      `· 내 문장 ${own.length}장` + (sim.length ? ` + 유사 문장 ${sim.length}장` : ''),
+      sim.length ? `\n유사 문장 (모델이 만든 새 문장):\n${shown}${sim.length > 10 ? `\n… 외 ${sim.length - 10}장` : ''}` : '',
+      rejected.length ? `\n검사를 통과하지 못해 제외: ${rejected.length}건\n${rejected.slice(0, 5).map((r) => `· ${r}`).join('\n')}` : '',
       similarMissing ? `\n유사 문장을 만들지 못해 제외: ${similarMissing}건` : '',
-      other ? `빈칸을 만들 수 없는 교정 ${other}건은 제외됩니다.` : '',
+      other ? `한 문장으로 된 빈칸을 만들 수 없는 교정 ${other}건은 제외됩니다.` : '',
       '\n이미 Anki에 있는 문장은 건너뜁니다.',
     ].filter(Boolean).join('\n');
     setPhase(null);
+    if (own.length + sim.length === 0) {
+      onShowToast(`등록할 카드가 없습니다: ${rejected.length}건이 검사를 통과하지 못했습니다.`);
+      return;
+    }
     if (!window.confirm(lines)) return;
 
-    // 3. add them one by one
-    const cards = [...plan.cards, ...similar];
+    // 4. add them one by one, each with its checked translation
+    const cards = [...own, ...sim];
     stopRef.current = false;
     let added = 0, duplicate = 0, failed = 0;
     let stopped = '';
@@ -99,6 +126,7 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
       try {
         const res = await api.addGrammarCard({
           sentence: draft.sentence, answer: draft.answer, mistake: draft.mistake, essay_id: essayId, fix_id: draft.fixId,
+          translation: draft.translation,
         });
         if (!res.success) { failed++; continue; }
         if (res.duplicate) duplicate++;
@@ -118,6 +146,7 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
 
   const label =
     phase?.kind === 'preparing' ? '유사 문장 만드는 중...'
+    : phase?.kind === 'checking' ? '문장·해설 검사 중...'
     : phase?.kind === 'adding' ? `등록 중 ${phase.done + 1}/${phase.total}`
     : `문법 카드 일괄 등록 (${total})`;
 

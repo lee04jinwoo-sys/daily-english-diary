@@ -156,11 +156,10 @@ class AnkiService:
         mistake = req.mistake.strip()
         tags = tuple(t for t in (f"{ESSAY_TAG}{req.essay_id}" if req.essay_id else "",
                                  f"{FIX_TAG}{req.fix_id}" if req.fix_id else "") if t)
-        return self._gateway_add("grammar", {
-            "sentence": sentence,
-            "answer": answer,
-            "distractors": [mistake] if mistake else [],
-        }, extra_tags=tags)
+        payload = {"sentence": sentence, "answer": answer, "distractors": [mistake] if mistake else []}
+        if req.translation.strip():
+            payload["translation"] = req.translation.strip()  # checked in prepare_grammar_cards
+        return self._gateway_add("grammar", payload, extra_tags=tags)
 
     def grammar_registered(self, essay_id: str) -> List[str]:
         """Ids of the corrections of this essay that already have a grammar card, read from the card tags.

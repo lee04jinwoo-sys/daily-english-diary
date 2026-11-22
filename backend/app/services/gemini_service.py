@@ -229,6 +229,20 @@ def is_valid_similar_sentence(sentence: str, answer: str, mistake: str, referenc
     return not (mistake or "").strip() or not _whole_word(mistake).search(blank.sub(" ", s))
 
 
+def card_draft_problem(sentence: str, translation: str, answer: str) -> Optional[str]:
+    """Why a prepared grammar-card draft cannot be used, or None: one whole sentence, the blank answer
+    exactly once as whole words (the card template's rule), and a Korean translation."""
+    if not sentence or len(split_sentences(sentence)) != 1 \
+            or not re.match(r"[\"'(\[\u201c\u2018]?[A-Z0-9]", sentence) \
+            or not re.search(r"[.!?][\"')\]\u201d\u2019]*$", sentence):
+        return "완전한 한 문장이 아닙니다."
+    if len(_whole_word(answer).findall(sentence)) != 1:
+        return f"빈칸 정답 '{answer}'이(가) 문장에 정확히 한 번 있어야 합니다."
+    if not re.search(r"[가-힣]", translation or ""):
+        return "한국어 해설이 없습니다."
+    return None
+
+
 class GeminiError(RuntimeError):
     """Raised when the AI review could not be produced. Never replaced with fake results."""
 
@@ -870,5 +884,92 @@ JSON 응답 규격:
             logger.error(f"Similar sentence check error: {e}", exc_info=True)
             raise GeminiError(str(e)) from e
         return [str(r["id"]) for r in self._rows(data) if r.get("ok") is True and str(r.get("id")) in candidates]
+    async def prepare_grammar_cards(self, items: List[dict]) -> dict:
+        """Make grammar cards right before they are added (Claude CLI, CLAUDE_CARD_MODEL = Sonnet).
+
+        items: {id, sentence, answer, mistake}. Sonnet fixes errors outside the blank and writes the
+        Korean translation; the code checks the shape (card_draft_problem); a second Sonnet call checks
+        that the sentence is grammatical and the translation matches it. A failing item is redone once
+        and then rejected with the reason. Returns {"cards": {id: {sentence, translation}}, "rejected": {id: reason}}.
+        """
+        pending = {i["id"]: i for i in items}
+        cards: dict = {}
+        reasons: dict = {}
+        for _ in range(2):
+            if not pending:
+                break
+            drafts = await self._fix_and_translate(pending, reasons)
+            verdicts = await self._check_cards(drafts)
+            for id_, draft in drafts.items():
+                problem = verdicts.get(id_, "검사 결과가 없습니다.")
+                if problem is None:
+                    cards[id_] = draft
+                    del pending[id_]
+                else:
+                    reasons[id_] = problem
+        return {"cards": cards, "rejected": {id_: reasons.get(id_, "검사를 통과하지 못했습니다.") for id_ in pending}}
+
+    async def _card_call(self, prompt: str):
+        try:
+            data, _ = await claude_cli.generate_json(prompt, settings.CLAUDE_CARD_MODEL)
+        except Exception as e:  # CLI down, limit reached, unreadable answer
+            logger.error(f"Card preparation call failed: {e}", exc_info=True)
+            raise GeminiError(str(e)) from e
+        return self._rows(data)
+
+    async def _fix_and_translate(self, pending: dict, reasons: dict) -> dict:
+        """id -> {sentence, translation} for the drafts that pass the code rules."""
+        listing = "\n".join(
+            f'id={i["id"]} | 문장: {i["sentence"]} | 빈칸 정답: {i["answer"]} | 틀린 형태: {i["mistake"]}'
+            for i in pending.values())
+        prompt = f"""
+아래는 영어 문법 카드(빈칸 객관식)로 만들 문장입니다. 항목마다 JSON으로 답하세요.
+- sentence: 문장에 문법 오류(수일치, 관사, 셀 수 없는 명사, 시제, 쉼표로 문장 이어 붙이기 등)가 있으면 최소한으로 고친 문장, 없으면 그대로.
+  반드시 완전한 한 문장이어야 합니다. 빈칸 정답은 철자와 형태를 바꾸지 말고 정확히 한 번만 남기세요. 뜻은 바꾸지 마세요.
+- translation: 최종 sentence의 자연스러운 한국어 번역. 빠뜨리거나 덧붙이지 말고 주어와 내용을 그대로 옮기세요.
+
+{{"items": [{{"id": "...", "sentence": "...", "translation": "..."}}]}}
+
+[항목]
+{listing}
+"""
+        out: dict = {}
+        for row in await self._card_call(prompt):
+            it = pending.get(str(row.get("id")))
+            if it is None:
+                continue
+            sentence = str(row.get("sentence") or "").strip()
+            translation = str(row.get("translation") or "").strip()
+            problem = card_draft_problem(sentence, translation, it["answer"])
+            if problem:
+                reasons[it["id"]] = problem
+            else:
+                out[it["id"]] = {"sentence": sentence, "translation": translation}
+        return out
+
+    async def _check_cards(self, drafts: dict) -> dict:
+        """id -> None when Sonnet accepts both the grammar and the translation, else the problem."""
+        if not drafts:
+            return {}
+        listing = "\n".join(f'id={id_} | 문장: {d["sentence"]} | 해설: {d["translation"]}' for id_, d in drafts.items())
+        prompt = f"""
+아래는 영어 학습 카드입니다. 카드마다 엄격하게 검사해 JSON으로만 답하세요.
+- grammar_ok: 영어 문장이 문법적으로 완전히 옳은 한 문장이면 true. 수일치, 관사, 셀 수 없는 명사, 쉼표로 문장을 이어 붙인 것(comma splice) 등 오류가 하나라도 있으면 false.
+- translation_ok: 한국어 해설이 영어 문장의 뜻을 빠짐없이, 다르게 바꾸지 않고 옮겼으면 true. 오역, 빠진 내용, 다른 단어(예: 주어가 다름)가 있으면 false.
+- problem: false인 항목이 있을 때만 무엇이 문제인지 한국어로 한 줄.
+
+{{"items": [{{"id": "...", "grammar_ok": true, "translation_ok": true, "problem": ""}}]}}
+
+[카드]
+{listing}
+"""
+        verdicts: dict = {}
+        for row in await self._card_call(prompt):
+            id_ = str(row.get("id"))
+            if id_ in drafts:
+                ok = row.get("grammar_ok") is True and row.get("translation_ok") is True
+                verdicts[id_] = None if ok else (str(row.get("problem") or "").strip() or "문법 또는 해설 검사를 통과하지 못했습니다.")
+        return verdicts
+
 
 gemini_service = GeminiService()

@@ -15,6 +15,8 @@ from app.schemas.anki import (
     SimilarSentencesRequest,
     SimilarSentencesResponse,
     GrammarRegisteredResponse,
+    PrepareGrammarCardsRequest,
+    PrepareGrammarCardsResponse,
 )
 from app.services.anki_service import anki_service
 from app.services.gemini_service import GeminiError, gemini_service
@@ -105,3 +107,12 @@ async def similar_sentences(req: SimilarSentencesRequest):
 async def grammar_registered(essay_id: str = Path(pattern=r"^[A-Za-z0-9_-]{1,64}$")):
     """Which corrections of this essay already have a grammar card (read from the tags in Anki)."""
     return GrammarRegisteredResponse(fix_ids=await run_in_threadpool(anki_service.grammar_registered, essay_id))
+
+
+@router.post("/prepare-grammar-cards", response_model=PrepareGrammarCardsResponse)
+async def prepare_grammar_cards(req: PrepareGrammarCardsRequest):
+    """Fix and translate grammar-card sentences right before they are added, and check both (Sonnet)."""
+    try:
+        return await gemini_service.prepare_grammar_cards([i.model_dump() for i in req.items])
+    except GeminiError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"카드 문장 검사에 실패했습니다: {e}")

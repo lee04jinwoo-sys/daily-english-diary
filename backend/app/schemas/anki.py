@@ -24,6 +24,7 @@ class GrammarCardRequest(BaseModel):
     mistake: str = Field(default="", description="What the learner actually wrote; kept as a wrong option")
     essay_id: Optional[str] = Field(default=None, description="Essay the card comes from; becomes a tag")
     fix_id: Optional[str] = Field(default=None, description="Correction the card tests; becomes a tag")
+    translation: str = Field(default="", description="Checked Korean translation; empty lets Anki Manager write one")
 
     @field_validator("essay_id", "fix_id")
     @classmethod
@@ -59,6 +60,23 @@ class SimilarSentencesRequest(BaseModel):
 
 class SimilarSentencesResponse(BaseModel):
     sentences: Dict[str, str]
+
+class CardDraftItem(BaseModel):
+    id: str
+    sentence: str
+    answer: str
+    mistake: str = ""
+
+class PrepareGrammarCardsRequest(BaseModel):
+    items: List[CardDraftItem]
+
+class PreparedCard(BaseModel):
+    sentence: str
+    translation: str
+
+class PrepareGrammarCardsResponse(BaseModel):
+    cards: Dict[str, PreparedCard]
+    rejected: Dict[str, str]
 
 class GrammarRegisteredResponse(BaseModel):
     fix_ids: List[str]
