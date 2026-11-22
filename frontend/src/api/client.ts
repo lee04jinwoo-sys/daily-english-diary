@@ -49,7 +49,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateEssay: (id: string, data: { content?: string; prompt?: string; writing_seconds?: number }, keepalive = false) =>
+  updateEssay: (id: string, data: { content?: string; prompt?: string; writing_seconds?: number; date?: string }, keepalive = false) =>
     fetchJson<Essay>(`/essays/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

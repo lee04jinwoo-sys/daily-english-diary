@@ -1,5 +1,7 @@
+import datetime
+import re
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.review import ReviewResponse
 
@@ -20,6 +22,22 @@ class EssayUpdateRequest(BaseModel):
     content: Optional[str] = None
     prompt: Optional[str] = None
     writing_seconds: Optional[int] = Field(default=None, ge=0, description="Active writing time; never decreases")
+    date: Optional[str] = Field(default=None, description="Day the essay counts for (YYYY-MM-DD, not in the future)")
+
+    @field_validator("date")
+    @classmethod
+    def _real_past_or_today(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("날짜는 YYYY-MM-DD 형식이어야 합니다.")
+        try:
+            day = datetime.date.fromisoformat(v)
+        except ValueError:
+            raise ValueError("존재하지 않는 날짜입니다.")
+        if day > datetime.date.today():
+            raise ValueError("미래 날짜로는 바꿀 수 없습니다.")
+        return v
 
 
 class EssayResponse(BaseModel):

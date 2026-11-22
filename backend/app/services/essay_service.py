@@ -88,6 +88,9 @@ class EssayService:
         if req.writing_seconds is not None:
             sets.append("writing_seconds = MAX(writing_seconds, ?)")
             params.append(req.writing_seconds)
+        if req.date is not None:
+            sets.append("date = ?")
+            params.append(req.date)
         async with _connect() as db:
             cur = await db.execute(f"UPDATE essays SET {', '.join(sets)} WHERE id = ?", (*params, essay_id))
             await db.commit()

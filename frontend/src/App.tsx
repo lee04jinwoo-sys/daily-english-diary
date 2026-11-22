@@ -160,6 +160,20 @@ export function App() {
     scheduleSave(currentEssay.id, { content, prompt });
   };
 
+  // The day the essay counts for (calendar, streak). Saved at once; the sidebar and streak are reloaded.
+  const handleDateChange = async (date: string) => {
+    if (!currentEssay || date === currentEssay.date) return;
+    const id = currentEssay.id;
+    try {
+      const updated = await api.updateEssay(id, { date });
+      setCurrentEssay((cur) => (cur && cur.id === id ? { ...cur, date: updated.date } : cur));
+      await refreshLists();
+      showToast(`날짜를 ${updated.date}로 바꿨습니다.`);
+    } catch (e: any) {
+      showToast(`날짜 변경 실패: ${e.message}`);
+    }
+  };
+
   // Trigger AI Review (the server stores the result on the essay)
   const handleReview = async () => {
     if (!currentEssay || !content.trim()) return;
@@ -310,6 +324,7 @@ export function App() {
             key={currentEssay.id}
             essay={currentEssay}
             onPromptChange={handlePromptChange}
+            onDateChange={handleDateChange}
             onRevise={handleRevise}
             previousBand={previousBand}
             content={content}

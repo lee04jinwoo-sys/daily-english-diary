@@ -1,14 +1,16 @@
 import React from 'react';
 import { Essay, ESSAY_TYPE_LABELS, CATEGORY_LABELS } from '../../types/essay';
-import { RotateCcw } from 'lucide-react';
+import { Calendar, RotateCcw } from 'lucide-react';
+import { localDateString } from '../../utils/dates';
 
 interface EssayPromptHeaderProps {
   essay: Essay;
   onPromptChange: (prompt: string) => void;
+  onDateChange: (date: string) => void;
   previousBand?: number | null;
 }
 
-export const EssayPromptHeader: React.FC<EssayPromptHeaderProps> = ({ essay, onPromptChange, previousBand }) => {
+export const EssayPromptHeader: React.FC<EssayPromptHeaderProps> = ({ essay, onPromptChange, onDateChange, previousBand }) => {
   const isFree = essay.essay_type === 'free';
 
   return (
@@ -20,7 +22,22 @@ export const EssayPromptHeader: React.FC<EssayPromptHeaderProps> = ({ essay, onP
         <span className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-[#2a2a2a] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-[#383838]">
           {CATEGORY_LABELS[essay.category]}
         </span>
-        <span className="text-stone-400 dark:text-stone-500 font-normal">{essay.date}</span>
+        <label
+          className="inline-flex items-center space-x-1 text-stone-400 dark:text-stone-500 font-normal cursor-pointer hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+          title="에세이 날짜 바꾸기 (오늘까지)"
+        >
+          <Calendar className="w-3 h-3" />
+          <input
+            type="date"
+            value={essay.date}
+            max={localDateString()}
+            onChange={(e) => {
+              // fires only for a complete date; an empty value means the field was cleared
+              if (e.target.value && e.target.value !== essay.date) onDateChange(e.target.value);
+            }}
+            className="bg-transparent outline-none text-[11px] cursor-pointer"
+          />
+        </label>
         {essay.revision_of && (
           <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/50">
             <RotateCcw className="w-3 h-3" />
