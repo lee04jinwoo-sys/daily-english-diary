@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { api } from '../../api/client';
+import { popoverTop } from '../../utils/popoverPosition';
 import { 
   Volume2, 
   BookmarkPlus, 
@@ -38,6 +39,11 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
   const [isSavingAnki, setIsSavingAnki] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+  // The real height decides where it opens; the entry gets taller once the dictionary answer arrives.
+  const [height, setHeight] = useState(270);
+  useLayoutEffect(() => {
+    if (popoverRef.current) setHeight(popoverRef.current.offsetHeight);
+  }, [data, loading, word, position]);
 
   useEffect(() => {
     if (!word || !position) return;
@@ -139,21 +145,21 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
     }
   };
 
-  // Smart flip positioning so popover NEVER overflows below or above screen
+  // Opens below the word, above it, or pinned to the bottom margin, using the measured height. A tall entry
+  // scrolls inside (max-height) while the header and the save button stay visible.
   const popoverWidth = 320;
-  const popoverHeight = 270;
   const leftPos = Math.min(Math.max(16, position.x - popoverWidth / 2), window.innerWidth - popoverWidth - 24);
-  const fitsBelow = position.y + 16 + popoverHeight <= window.innerHeight;
-  const topPos = fitsBelow ? position.y + 12 : Math.max(16, position.y - popoverHeight - 12);
+  const maxHeight = window.innerHeight - 32;
+  const topPos = popoverTop(position.y, Math.min(height, maxHeight), window.innerHeight);
 
   return (
     <div
       ref={popoverRef}
-      style={{ top: `${topPos}px`, left: `${leftPos}px` }}
-      className="fixed z-50 w-80 bg-white dark:bg-[#202020] rounded-2xl border border-stone-200 dark:border-[#383838] shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-150 transition-colors"
+      style={{ top: `${topPos}px`, left: `${leftPos}px`, maxHeight: `${maxHeight}px` }}
+      className="fixed z-50 w-80 flex flex-col bg-white dark:bg-[#202020] rounded-2xl border border-stone-200 dark:border-[#383838] shadow-2xl p-4 animate-in fade-in zoom-in-95 duration-150 transition-colors"
     >
       {/* Header */}
-      <div className="flex items-center justify-between pb-2.5 border-b border-stone-100 dark:border-[#2e2e2e]">
+      <div className="shrink-0 flex items-center justify-between pb-2.5 border-b border-stone-100 dark:border-[#2e2e2e]">
         <div className="flex items-center space-x-2">
           <span className="font-serif text-base font-bold text-stone-900 dark:text-white">
             {data?.word || word}
@@ -189,7 +195,7 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
           <span className="text-xs">실시간 단어 사전 분석 중...</span>
         </div>
       ) : data ? (
-        <div className="py-3 space-y-2.5 text-xs">
+        <div className="py-3 space-y-2.5 text-xs flex-1 min-h-0 overflow-y-auto">
           {/* Meaning */}
           <div className="flex items-start space-x-2">
             <span className="text-[10px] uppercase font-bold text-stone-400 dark:text-stone-500 shrink-0 w-8 mt-0.5">
@@ -231,7 +237,7 @@ export const WordPopover: React.FC<WordPopoverProps> = ({
       ) : null}
 
       {/* Footer - DIRECT 1-CLICK ANKI */}
-      <div className="pt-2.5 border-t border-stone-100 dark:border-[#2e2e2e] flex items-center justify-between">
+      <div className="shrink-0 pt-2.5 border-t border-stone-100 dark:border-[#2e2e2e] flex items-center justify-between">
         <span className="text-[10px] text-stone-400 dark:text-stone-500">
           Shadowing Player 호환
         </span>
