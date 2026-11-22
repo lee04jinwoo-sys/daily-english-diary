@@ -6,6 +6,7 @@ import { SentenceStudyView } from './SentenceStudyView';
 import { WordPopover } from '../common/WordPopover';
 import { EssayPromptHeader } from './EssayPromptHeader';
 import { EssayFeedback } from './EssayFeedback';
+import { BulkGrammarCardsButton } from '../anki/BulkGrammarCardsButton';
 import { useWritingTimer, formatDuration, IDLE_LIMIT_MS } from '../../hooks/useWritingTimer';
 import { api } from '../../api/client';
 import { GrammarCardDraft, correctedSentence, grammarDraft, isGrammarFix } from '../../utils/cardText';
@@ -38,6 +39,7 @@ interface GrammarlyEditorProps {
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
   onOpenGrammarModal: (draft: GrammarCardDraft) => void;
   onShowToast: (msg: string) => void;
+  ankiConnected: boolean;
 }
 
 export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
@@ -55,6 +57,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   onOpenAnkiModal,
   onOpenGrammarModal,
   onShowToast,
+  ankiConnected,
 }) => {
   const essayId = essay.id;
   const timer = useWritingTimer(essay.id, essay.writing_seconds);
@@ -621,6 +624,15 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
               <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                 원문은 그대로 남습니다. 고쳐 쓰기에서 직접 다시 써 보세요.
               </div>
+              {reviewResult && (
+                <BulkGrammarCardsButton
+                  originalText={reviewResult.original_text}
+                  suggestions={suggestions}
+                  ankiConnected={ankiConnected}
+                  disabled={isReviewing}
+                  onShowToast={onShowToast}
+                />
+              )}
             </div>
 
             {suggestions.length === 0 ? (

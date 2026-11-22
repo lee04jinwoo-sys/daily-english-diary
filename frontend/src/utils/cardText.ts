@@ -122,3 +122,46 @@ export function grammarDraft(originalText: string, suggestions: SuggestionItem[]
 export function isGrammarFix(sg: SuggestionItem): boolean {
   return sg.category === 'Grammar' && !!sg.suggested_phrase.trim();
 }
+
+export type SkipReason = 'unlocated' | 'blank' | 'same' | 'same_sentence';
+
+export interface GrammarPlan {
+  cards: GrammarCardDraft[];
+  skipped: { suggestion: SuggestionItem; reason: SkipReason }[];
+}
+
+/**
+ * Every grammar card an essay can yield, in text order. Anki treats two grammar notes with the same
+ * sentence as duplicates (the first field alone decides), and a card's sentence has all the sentence's
+ * fixes applied, so a sentence with several fixes gets one card: the leftmost valid fix. Fixes that
+ * cannot make a card are returned with the reason instead of being dropped silently.
+ */
+export function planGrammarCards(originalText: string, suggestions: SuggestionItem[]): GrammarPlan {
+  const plan: GrammarPlan = { cards: [], skipped: [] };
+  const taken = new Set<string>();
+  const fixes = suggestions.filter(isGrammarFix).sort((a, b) => a.start_idx - b.start_idx);
+  for (const sg of fixes) {
+    const sentence = fullyCorrectedSentence(originalText, suggestions, sg);
+    if (sentence === null) {
+      plan.skipped.push({ suggestion: sg, reason: 'unlocated' });
+      continue;
+    }
+    const draft: GrammarCardDraft = {
+      sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation,
+    };
+    if (!draft.mistake.trim() || draft.mistake.trim().toLowerCase() === draft.answer.trim().toLowerCase()) {
+      plan.skipped.push({ suggestion: sg, reason: 'same' });
+    } else if (blankCount(draft.sentence, draft.answer) !== 1) {
+      plan.skipped.push({ suggestion: sg, reason: 'blank' });
+    } else {
+      const key = sentence.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (taken.has(key)) {
+        plan.skipped.push({ suggestion: sg, reason: 'same_sentence' });
+      } else {
+        taken.add(key);
+        plan.cards.push(draft);
+      }
+    }
+  }
+  return plan;
+}

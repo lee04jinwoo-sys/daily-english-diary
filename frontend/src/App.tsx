@@ -322,6 +322,7 @@ export function App() {
             onOpenAnkiModal={handleOpenAnkiModal}
             onOpenGrammarModal={setGrammarDraft}
             onShowToast={showToast}
+            ankiConnected={!!ankiStatus?.connected}
           />
         )}
 
