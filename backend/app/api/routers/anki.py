@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Path, status
 from starlette.concurrency import run_in_threadpool
 from app.schemas.anki import (
     AnkiStatusResponse,
@@ -14,6 +14,7 @@ from app.schemas.anki import (
     UndoCardRequest,
     SimilarSentencesRequest,
     SimilarSentencesResponse,
+    GrammarRegisteredResponse,
 )
 from app.services.anki_service import anki_service
 from app.services.gemini_service import GeminiError, gemini_service
@@ -98,3 +99,9 @@ async def similar_sentences(req: SimilarSentencesRequest):
     except GeminiError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"유사 문장 생성에 실패했습니다: {e}")
     return SimilarSentencesResponse(sentences=sentences)
+
+
+@router.get("/grammar-registered/{essay_id}", response_model=GrammarRegisteredResponse)
+async def grammar_registered(essay_id: str = Path(pattern=r"^[A-Za-z0-9_-]{1,64}$")):
+    """Which corrections of this essay already have a grammar card (read from the tags in Anki)."""
+    return GrammarRegisteredResponse(fix_ids=await run_in_threadpool(anki_service.grammar_registered, essay_id))

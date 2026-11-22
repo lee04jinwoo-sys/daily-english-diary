@@ -16,6 +16,7 @@ VOCAB_DECK, VOCAB_MODEL = "1. Language::1.1. English::Vocabulary", "English Voca
 GRAMMAR_DECK, GRAMMAR_MODEL = "1. Language::1.1. English::Grammar", "English Grammar"
 ALLOWED_POS = {"n", "v", "adj", "adv", "idiom"}
 CARD_TAG = "daily-english-essay"
+ESSAY_TAG, FIX_TAG = "de-essay::", "de-fix::"  # which essay / correction a grammar card came from
 TUNNEL_DOWN = ("오라클 서버 Anki에 연결할 수 없습니다. SSH 터널(Projects/infra/anki_tunnel)이 "
                "떠 있는지 확인하세요.")
 
@@ -70,7 +71,7 @@ class AnkiService:
             return AnkiActionResponse(success=True, duplicate=True, message=duplicate_msg)
         return AnkiActionResponse(success=False, error=f"카드 추가 불가: {err}")
 
-    def _gateway_add(self, kind: str, payload: dict) -> AnkiActionResponse:
+    def _gateway_add(self, kind: str, payload: dict, extra_tags: tuple = ()) -> AnkiActionResponse:
         """Create the card through the Anki Manager gateway, which owns the card rules
         (fields, enrichment prompts, zero synonyms, audio, link indexing)."""
         url = f"{settings.ANKI_GATEWAY_URL}/api/cards/{kind}"
@@ -96,7 +97,7 @@ class AnkiService:
         note_id = body.get("note_id")
         if note_id:
             try:
-                self.invoke("addTags", notes=[note_id], tags=CARD_TAG)
+                self.invoke("addTags", notes=[note_id], tags=" ".join((CARD_TAG, *extra_tags)))
             except Exception as e:
                 logger.warning(f"Tagging note {note_id} failed: {e}")
         return AnkiActionResponse(success=True, note_id=note_id, message="Anki 카드가 등록되었습니다! (Anki Manager 규칙 적용)")
@@ -153,11 +154,27 @@ class AnkiService:
         if blocked:
             return blocked
         mistake = req.mistake.strip()
+        tags = tuple(t for t in (f"{ESSAY_TAG}{req.essay_id}" if req.essay_id else "",
+                                 f"{FIX_TAG}{req.fix_id}" if req.fix_id else "") if t)
         return self._gateway_add("grammar", {
             "sentence": sentence,
             "answer": answer,
             "distractors": [mistake] if mistake else [],
-        })
+        }, extra_tags=tags)
+
+    def grammar_registered(self, essay_id: str) -> List[str]:
+        """Ids of the corrections of this essay that already have a grammar card, read from the card tags.
+
+        Empty when Anki cannot be reached: the buttons then simply look unregistered.
+        """
+        try:
+            ids = self.invoke("findNotes", query=f'tag:{ESSAY_TAG}{essay_id} "note:{GRAMMAR_MODEL}"')
+            notes = self.invoke("notesInfo", notes=ids) if ids else []
+        except Exception as e:
+            logger.warning(f"Registered grammar lookup failed: {e}")
+            return []
+        found = {t[len(FIX_TAG):] for n in notes for t in n.get("tags", []) if t.startswith(FIX_TAG)}
+        return sorted(found)
 
     def undo_card(self, note_id: int) -> AnkiActionResponse:
         """Deletes one note by id, but only a card this app made that was never studied.

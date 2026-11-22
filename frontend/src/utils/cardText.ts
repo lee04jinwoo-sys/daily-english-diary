@@ -36,6 +36,8 @@ export interface GrammarCardDraft {
   answer: string;
   mistake: string;
   explanation?: string;
+  /** The correction this card tests; sent with the card so it can be tagged and found again. */
+  fixId?: string;
 }
 
 const isWord = (c: string | undefined) => !!c && /[A-Za-z0-9']/.test(c);
@@ -115,7 +117,7 @@ export function fullyCorrectedSentence(originalText: string, suggestions: Sugges
 
 export function grammarDraft(originalText: string, suggestions: SuggestionItem[], sg: SuggestionItem): GrammarCardDraft {
   const sentence = fullyCorrectedSentence(originalText, suggestions, sg) ?? correctedSentence(originalText, sg);
-  return { sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation };
+  return { sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation, fixId: sg.id };
 }
 
 /** Grammar cards make sense for grammar fixes that replace one wording with another. */
@@ -127,6 +129,8 @@ export type SkipReason = 'unlocated' | 'blank' | 'same' | 'same_sentence';
 
 export interface GrammarPlan {
   cards: GrammarCardDraft[];
+  /** Ids of the fixes that already have a card (left out of `cards` and `skipped`). */
+  registered: string[];
   /** `draft` is set for 'same_sentence': a valid card that only shares its sentence with a chosen one. */
   skipped: { suggestion: SuggestionItem; reason: SkipReason; draft?: GrammarCardDraft }[];
 }
@@ -135,7 +139,8 @@ export interface GrammarPlan {
  * Every grammar card an essay can yield from the learner's own sentences, in text order. Anki treats
  * two grammar notes with the same sentence as duplicates (the first field alone decides), and a card's
  * sentence has all the sentence's fixes applied, so a sentence with several fixes gets one card: the
- * fix that belongs to a recurring pattern, else the leftmost valid one. The other valid fixes come back
+ * fix that belongs to a recurring pattern, else the leftmost valid one. Fixes in `registered` already have
+ * a card: they are reported, and their sentence counts as taken. The other valid fixes come back
  * as 'same_sentence' with their draft (they can still get a card on a new, similar sentence). Fixes that
  * cannot make a card are returned with the reason instead of being dropped silently.
  */
@@ -143,6 +148,7 @@ export function planGrammarCards(
   originalText: string,
   suggestions: SuggestionItem[],
   patterns: { examples: string[] }[] = [],
+  registered: ReadonlySet<string> = new Set(),
 ): GrammarPlan {
   const inPattern = (sg: SuggestionItem) => {
     const o = sg.original_phrase.trim().toLowerCase();
@@ -151,11 +157,18 @@ export function planGrammarCards(
       return x.length >= 3 && o.length >= 3 && (x === o || x.includes(o) || o.includes(x));
     }));
   };
-  const plan: GrammarPlan = { cards: [], skipped: [] };
+  const plan: GrammarPlan = { cards: [], skipped: [], registered: [] };
   const chosen: { draft: GrammarCardDraft; start: number }[] = [];
   const taken = new Set<string>();
-  const fixes = suggestions
-    .filter(isGrammarFix)
+  const all = suggestions.filter(isGrammarFix);
+  for (const sg of all) {
+    if (!sg.id || !registered.has(sg.id)) continue;
+    plan.registered.push(sg.id);
+    const sentence = fullyCorrectedSentence(originalText, suggestions, sg);
+    if (sentence !== null) taken.add(sentence.toLowerCase().replace(/\s+/g, ' ').trim());
+  }
+  const fixes = all
+    .filter((sg) => !(sg.id && registered.has(sg.id)))
     .sort((a, b) => Number(!inPattern(a)) - Number(!inPattern(b)) || a.start_idx - b.start_idx);
   for (const sg of fixes) {
     const sentence = fullyCorrectedSentence(originalText, suggestions, sg);
@@ -164,7 +177,7 @@ export function planGrammarCards(
       continue;
     }
     const draft: GrammarCardDraft = {
-      sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation,
+      sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation, fixId: sg.id,
     };
     if (!draft.mistake.trim() || draft.mistake.trim().toLowerCase() === draft.answer.trim().toLowerCase()) {
       plan.skipped.push({ suggestion: sg, reason: 'same' });

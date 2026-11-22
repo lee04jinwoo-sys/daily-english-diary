@@ -41,6 +41,8 @@ interface GrammarlyEditorProps {
   onOpenGrammarModal: (draft: GrammarCardDraft) => void;
   onShowToast: (msg: string) => void;
   ankiConnected: boolean;
+  registeredFixIds: ReadonlySet<string>;
+  onGrammarRegistered: (fixIds: string[]) => void;
 }
 
 export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
@@ -60,6 +62,8 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   onOpenGrammarModal,
   onShowToast,
   ankiConnected,
+  registeredFixIds,
+  onGrammarRegistered,
 }) => {
   const essayId = essay.id;
   const timer = useWritingTimer(essay.id, essay.writing_seconds);
@@ -631,6 +635,9 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                   originalText={reviewResult.original_text}
                   suggestions={suggestions}
                   patterns={reviewResult.recurring_patterns}
+                  essayId={essay.id}
+                  registeredFixIds={registeredFixIds}
+                  onRegistered={onGrammarRegistered}
                   ankiConnected={ankiConnected}
                   disabled={isReviewing}
                   onShowToast={onShowToast}
@@ -660,6 +667,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                     sentenceForCard={sentenceForCard(item)}
                     onOpenAnkiModal={onOpenAnkiModal}
                     onOpenGrammarCard={isGrammarFix(item) ? () => onOpenGrammarModal(grammarDraft(reviewResult?.original_text || '', suggestions, item)) : undefined}
+                    grammarRegistered={!!item.id && registeredFixIds.has(item.id)}
                   />
                 </div>
               ))

@@ -154,6 +154,23 @@ export function App() {
     if (currentEssay) scheduleSave(currentEssay.id, { content: newContent });
   };
 
+  // Corrections of the open essay that already have a grammar card in Anki. Read back from the card tags
+  // when an essay opens (so it survives reloads); grows as cards are added here.
+  const [registeredFixIds, setRegisteredFixIds] = useState<Set<string>>(new Set());
+  const markGrammarRegistered = useCallback((ids: string[]) => {
+    setRegisteredFixIds((prev) => new Set([...prev, ...ids]));
+  }, []);
+  useEffect(() => {
+    setRegisteredFixIds(new Set());
+  }, [currentEssay?.id]);
+  useEffect(() => {
+    const id = currentEssay?.id;
+    if (!id || !ankiStatus?.connected) return;
+    let cancelled = false;
+    api.grammarRegistered(id).then((r) => { if (!cancelled) markGrammarRegistered(r.fix_ids); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentEssay?.id, ankiStatus?.connected, markGrammarRegistered]);
+
   const handlePromptChange = (prompt: string) => {
     if (!currentEssay) return;
     setCurrentEssay({ ...currentEssay, prompt });
@@ -338,6 +355,8 @@ export function App() {
             onOpenGrammarModal={setGrammarDraft}
             onShowToast={showToast}
             ankiConnected={!!ankiStatus?.connected}
+            registeredFixIds={registeredFixIds}
+            onGrammarRegistered={markGrammarRegistered}
           />
         )}
 
@@ -359,6 +378,8 @@ export function App() {
         onClose={() => setGrammarDraft(null)}
         ankiStatus={ankiStatus}
         onCardAdded={showToast}
+        essayId={currentEssay?.id}
+        onRegistered={(fixId) => markGrammarRegistered([fixId])}
       />
 
       {/* Anki Card Preview & Edit Modal */}

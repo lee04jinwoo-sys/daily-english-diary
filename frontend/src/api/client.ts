@@ -163,7 +163,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ items }),
     }),
-  addGrammarCard: (data: { sentence: string; answer: string; mistake: string }) =>
+  // essay_id / fix_id become tags on the card, so which fixes already have one can be read back from Anki.
+  grammarRegistered: (essayId: string) =>
+    fetchJson<{ fix_ids: string[] }>(`/anki/grammar-registered/${encodeURIComponent(essayId)}`),
+  addGrammarCard: (data: { sentence: string; answer: string; mistake: string; essay_id?: string; fix_id?: string }) =>
     fetchJson<AnkiActionResponse>('/anki/add-grammar', {
       method: 'POST',
       body: JSON.stringify(data),

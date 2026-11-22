@@ -1,6 +1,6 @@
 import React from 'react';
 import { SuggestionItem, CardType } from '../../types/essay';
-import { BookmarkPlus } from 'lucide-react';
+import { BookmarkPlus, Check } from 'lucide-react';
 
 interface SuggestionCardProps {
   suggestion: SuggestionItem;
@@ -11,6 +11,8 @@ interface SuggestionCardProps {
   onOpenAnkiModal: (cardType: CardType, text: string, context?: string) => void;
   /** Set for grammar fixes: opens the grammar (multiple-choice) card form. */
   onOpenGrammarCard?: () => void;
+  /** This fix already has a grammar card in Anki. */
+  grammarRegistered?: boolean;
 }
 
 export const SuggestionCard: React.FC<SuggestionCardProps> = ({
@@ -20,6 +22,7 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
   sentenceForCard,
   onOpenAnkiModal,
   onOpenGrammarCard,
+  grammarRegistered,
 }) => {
   const getCategoryBadge = () => {
     if (suggestion.tier === 'accuracy') {
@@ -154,7 +157,16 @@ export const SuggestionCard: React.FC<SuggestionCardProps> = ({
             <span>단어 Anki</span>
           </button>
 
-          {onOpenGrammarCard && (
+          {onOpenGrammarCard && grammarRegistered && (
+            <span
+              className="flex items-center space-x-1 text-[11px] text-emerald-700 dark:text-emerald-300 px-2 py-1"
+              title="이미 Anki 문법 카드로 등록되어 있습니다"
+            >
+              <Check className="w-3 h-3" />
+              <span>문법 등록됨</span>
+            </span>
+          )}
+          {onOpenGrammarCard && !grammarRegistered && (
             <button
               onClick={(e) => {
                 e.stopPropagation();

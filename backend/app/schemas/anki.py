@@ -1,5 +1,6 @@
+import re
 from typing import Dict, Optional, List, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 CardType = Literal["sentence", "vocab"]
 
@@ -21,6 +22,15 @@ class GrammarCardRequest(BaseModel):
     sentence: str = Field(..., description="Corrected full sentence")
     answer: str = Field(..., description="The corrected phrase; blanked on the card front")
     mistake: str = Field(default="", description="What the learner actually wrote; kept as a wrong option")
+    essay_id: Optional[str] = Field(default=None, description="Essay the card comes from; becomes a tag")
+    fix_id: Optional[str] = Field(default=None, description="Correction the card tests; becomes a tag")
+
+    @field_validator("essay_id", "fix_id")
+    @classmethod
+    def _tag_safe(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", v):
+            raise ValueError("id must be 1-64 letters, digits, '-' or '_'")
+        return v
 
 class CardPreviewRequest(BaseModel):
     card_type: CardType
@@ -49,6 +59,9 @@ class SimilarSentencesRequest(BaseModel):
 
 class SimilarSentencesResponse(BaseModel):
     sentences: Dict[str, str]
+
+class GrammarRegisteredResponse(BaseModel):
+    fix_ids: List[str]
 
 class UndoCardRequest(BaseModel):
     note_id: int

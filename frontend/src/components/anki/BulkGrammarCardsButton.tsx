@@ -2,12 +2,17 @@ import React, { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { RecurringPattern, SuggestionItem } from '../../types/essay';
 import { GrammarCardDraft, blankCount, planGrammarCards } from '../../utils/cardText';
-import { BookmarkPlus, Loader2 } from 'lucide-react';
+import { BookmarkPlus, Check, Loader2 } from 'lucide-react';
 
 interface BulkGrammarCardsButtonProps {
   originalText: string;
   suggestions: SuggestionItem[];
   patterns?: RecurringPattern[];
+  essayId: string;
+  /** Ids of the fixes that already have a grammar card. */
+  registeredFixIds: ReadonlySet<string>;
+  /** Called with the fixes whose card now exists in Anki (just added, or it was already there). */
+  onRegistered: (fixIds: string[]) => void;
   ankiConnected: boolean;
   disabled?: boolean;
   onShowToast: (msg: string) => void;
@@ -23,16 +28,27 @@ type Phase = { kind: 'preparing' } | { kind: 'adding'; done: number; total: numb
  * added. Sentences already in Anki come back as duplicates and are skipped.
  */
 export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
-  originalText, suggestions, patterns, ankiConnected, disabled, onShowToast,
+  originalText, suggestions, patterns, essayId, registeredFixIds, onRegistered, ankiConnected, disabled, onShowToast,
 }) => {
-  const plan = useMemo(() => planGrammarCards(originalText, suggestions, patterns || []), [originalText, suggestions, patterns]);
+  const plan = useMemo(
+    () => planGrammarCards(originalText, suggestions, patterns || [], registeredFixIds),
+    [originalText, suggestions, patterns, registeredFixIds],
+  );
   const extras = useMemo(() => plan.skipped.filter((s) => s.reason === 'same_sentence' && s.draft), [plan]);
   const [phase, setPhase] = useState<Phase>(null);
   const stopRef = useRef(false);
   const busy = phase !== null;
 
   const total = plan.cards.length + extras.length;
-  if (total === 0) return null;
+  if (total === 0) {
+    if (plan.registered.length === 0) return null;
+    return (
+      <div className="mt-2 flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300" title="이 에세이의 문법 교정은 모두 Anki 카드로 등록되어 있습니다">
+        <Check className="w-3.5 h-3.5" />
+        <span>문법 카드 등록 완료 ({plan.registered.length})</span>
+      </div>
+    );
+  }
 
   const run = async () => {
     // 1. similar sentences for the fixes that share a sentence with a chosen one
@@ -76,20 +92,25 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
     stopRef.current = false;
     let added = 0, duplicate = 0, failed = 0;
     let stopped = '';
+    const nowRegistered: string[] = [];
     for (const [i, draft] of cards.entries()) {
       if (stopRef.current) { stopped = '중단됨'; break; }
       setPhase({ kind: 'adding', done: i, total: cards.length });
       try {
-        const res = await api.addGrammarCard({ sentence: draft.sentence, answer: draft.answer, mistake: draft.mistake });
-        if (!res.success) failed++;
-        else if (res.duplicate) duplicate++;
+        const res = await api.addGrammarCard({
+          sentence: draft.sentence, answer: draft.answer, mistake: draft.mistake, essay_id: essayId, fix_id: draft.fixId,
+        });
+        if (!res.success) { failed++; continue; }
+        if (res.duplicate) duplicate++;
         else added++;
+        if (draft.fixId) nowRegistered.push(draft.fixId);
       } catch (e: any) {
         failed++;
         if (/연결할 수 없/.test(e?.message || '')) { stopped = 'Anki 연결이 끊겨 중단됨'; break; }
       }
     }
     setPhase(null);
+    if (nowRegistered.length) onRegistered(nowRegistered);
     onShowToast(
       `문법 카드 ${added}장 등록 · 이미 있음 ${duplicate}장` + (failed ? ` · 실패 ${failed}장` : '') + (stopped ? ` · ${stopped}` : ''),
     );

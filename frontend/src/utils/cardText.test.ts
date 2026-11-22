@@ -170,7 +170,35 @@ describe('planGrammarCards', () => {
     expect(skip.draft!.sentence).toBe('Many people work long hours and they are tired.');
   });
 
+  it('puts the fix id on each draft so the card can be tagged and tracked', () => {
+    const plan = planGrammarCards(TEXT, [fix(TEXT, 'He go', 'He goes', { id: 'fx1' })]);
+    expect(plan.cards[0].fixId).toBe('fx1');
+  });
+
+  it('leaves out fixes that already have a card and reports them as registered', () => {
+    const sugg = [fix(TEXT, 'He go', 'He goes', { id: 'a' }), fix(TEXT, 'Many people works', 'Many people work', { id: 'b' })];
+    const plan = planGrammarCards(TEXT, sugg, [], new Set(['a']));
+    expect(plan.cards.map((c) => c.fixId)).toEqual(['b']);
+    expect(plan.registered).toEqual(['a']);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it('a registered card owns its sentence: the other fix of that sentence becomes a similar-sentence candidate', () => {
+    const sugg = [fix(TEXT, 'Many people works', 'Many people work', { id: 'first' }), fix(TEXT, 'they is', 'they are', { id: 'second' })];
+    const plan = planGrammarCards(TEXT, sugg, [], new Set(['first']));
+    expect(plan.cards).toEqual([]);
+    expect(plan.registered).toEqual(['first']);
+    expect(plan.skipped.map((s) => [s.suggestion.id, s.reason])).toEqual([['second', 'same_sentence']]);
+    expect(plan.skipped[0].draft?.fixId).toBe('second');
+  });
+
+  it('ignores registered ids that are not fixes of this essay', () => {
+    const plan = planGrammarCards(TEXT, [fix(TEXT, 'He go', 'He goes', { id: 'a' })], [], new Set(['zzz']));
+    expect(plan.cards.length).toBe(1);
+    expect(plan.registered).toEqual([]);
+  });
+
   it('returns nothing for an essay without grammar fixes', () => {
-    expect(planGrammarCards(TEXT, [])).toEqual({ cards: [], skipped: [] });
+    expect(planGrammarCards(TEXT, [])).toEqual({ cards: [], skipped: [], registered: [] });
   });
 });

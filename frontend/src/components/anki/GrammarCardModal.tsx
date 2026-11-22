@@ -9,6 +9,9 @@ interface GrammarCardModalProps {
   onClose: () => void;
   ankiStatus: AnkiStatus | null;
   onCardAdded: (message: string) => void;
+  essayId?: string;
+  /** Called when the card exists in Anki (just added, or it was already there). */
+  onRegistered?: (fixId: string) => void;
 }
 
 const inputCls =
@@ -19,7 +22,7 @@ const inputCls =
  * mistake is one of the wrong options. Anki Manager fills the translation, the explanation
  * and the other two options under its card rules.
  */
-export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClose, ankiStatus, onCardAdded }) => {
+export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClose, ankiStatus, onCardAdded, essayId, onRegistered }) => {
   const [sentence, setSentence] = useState('');
   const [answer, setAnswer] = useState('');
   const [mistake, setMistake] = useState('');
@@ -50,8 +53,12 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await api.addGrammarCard({ sentence: sentence.trim(), answer: answer.trim(), mistake: mistake.trim() });
+      const res = await api.addGrammarCard({
+        sentence: sentence.trim(), answer: answer.trim(), mistake: mistake.trim(),
+        essay_id: essayId, fix_id: draft.fixId,
+      });
       if (res.success) {
+        if (draft.fixId) onRegistered?.(draft.fixId);
         onCardAdded(res.duplicate ? '이미 존재하는 문법 문장입니다 (중복 방지)' : 'Anki 문법 카드가 등록되었습니다!');
         onClose();
       }
