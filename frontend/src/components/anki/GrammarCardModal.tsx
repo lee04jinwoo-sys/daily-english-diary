@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { AnkiStatus } from '../../types/essay';
 import { GrammarCardDraft, blankCount, blankedSentence } from '../../utils/cardText';
+import { isCompleteSentence } from '../../utils/sentences';
 import { X, BookmarkPlus, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface GrammarCardModalProps {
@@ -45,6 +46,7 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
     blanks === 0 ? '정답이 문장 안에 단어 단위로 없어서 빈칸을 만들 수 없습니다.'
     : blanks > 1 ? `정답이 문장에 ${blanks}번 나옵니다. 빈칸이 한 곳만 생기도록 정답을 더 길게 잡으세요.`
     : sameAsAnswer ? '내가 쓴 형태가 정답과 같습니다.'
+    : !isCompleteSentence(sentence) ? '완전한 한 문장이 아닙니다 (두 문장이거나, 소문자로 시작하거나, 문장부호로 끝나지 않음). 문장을 고쳐 주세요.'
     : null;
 
   const handleSubmit = async (e: React.FormEvent) => {

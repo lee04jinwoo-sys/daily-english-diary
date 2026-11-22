@@ -32,6 +32,8 @@ def test_valid_sentences(sentence):
     ("My sister goes to the gym, but they go late.", "the wrong form is also in the sentence"),
     ("He goes to school every day.", "same as the reference sentence"),
     ("My sister goes to the gym. She likes it.", "two sentences"),
+    ("my sister goes to the gym on Sundays.", "starts in lowercase"),
+    ("My sister goes to the gym on Sundays", "no final punctuation"),
 ])
 def test_invalid_sentences(sentence, why):
     assert not is_valid_similar_sentence(sentence, "goes", "go", "He goes to school every day."), why

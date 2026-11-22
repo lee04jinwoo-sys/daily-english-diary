@@ -198,6 +198,30 @@ describe('planGrammarCards', () => {
     expect(plan.registered).toEqual([]);
   });
 
+  it('a fix that splits a run-on sentence gives each card one sentence; the split itself gets no card', () => {
+    const t = 'Even though it happened, there are not much things to do, on the internet, it is hard to delete. Next one.';
+    const sugg = [
+      fix(t, 'are not much things', 'are not many things', { id: 'much' }),
+      fix(t, 'do, on the internet, it', 'do. On the internet, it', { id: 'split' }),
+    ];
+    const plan = planGrammarCards(t, sugg);
+    expect(plan.cards.map((c) => c.sentence)).toEqual(['Even though it happened, there are not many things to do.']);
+    expect(plan.skipped.map((s) => [s.suggestion.id, s.reason])).toEqual([['split', 'boundary']]);
+  });
+
+  it('a question quoted inside a sentence keeps the whole sentence on the card', () => {
+    const t = 'To answer the question "why is it rising?" we should looks at the public. Next one.';
+    const plan = planGrammarCards(t, [fix(t, 'we should looks at', 'we should look at')]);
+    expect(plan.cards.map((c) => c.sentence)).toEqual(['To answer the question "why is it rising?" we should look at the public.']);
+  });
+
+  it('a sentence that is not a complete sentence gets no card', () => {
+    const t = 'my essay title has a error\nThe essay starts here.';
+    const plan = planGrammarCards(t, [fix(t, 'a error', 'an error')]);
+    expect(plan.cards).toEqual([]);
+    expect(plan.skipped.map((s) => s.reason)).toEqual(['not_sentence']);
+  });
+
   it('returns nothing for an essay without grammar fixes', () => {
     expect(planGrammarCards(TEXT, [])).toEqual({ cards: [], skipped: [], registered: [] });
   });

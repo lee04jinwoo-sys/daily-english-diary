@@ -221,6 +221,8 @@ def is_valid_similar_sentence(sentence: str, answer: str, mistake: str, referenc
     s = (sentence or "").strip()
     if not s or len(split_sentences(s)) != 1 or s.lower() == (reference or "").strip().lower():
         return False
+    if not re.match(r"[\"'(\[\u201c\u2018]?[A-Z0-9]", s) or not re.search(r"[.!?][\"')\]\u201d\u2019]*$", s):
+        return False  # a whole sentence: starts like one and ends with . ! or ?
     blank = _whole_word(answer)
     if len(blank.findall(s)) != 1:
         return False

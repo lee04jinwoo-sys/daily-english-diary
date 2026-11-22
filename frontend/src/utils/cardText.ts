@@ -1,13 +1,10 @@
 import { SuggestionItem } from '../types/essay';
+import { isCompleteSentence, splitSentences } from './sentences';
 
 /** The learner's whole sentence (as reviewed) with one fix applied; falls back to the fix itself. */
 export function correctedSentence(originalText: string, sg: SuggestionItem): string {
   if (sg.start_idx < 0 || originalText.slice(sg.start_idx, sg.end_idx) !== sg.original_phrase) return sg.suggested_phrase;
-  const re = /[^.!?\n]+[.!?]*/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(originalText))) {
-    const start = m.index;
-    const end = start + m[0].length;
+  for (const [start, end] of splitSentences(originalText)) {
     if (sg.start_idx >= start && sg.end_idx <= end) {
       return (originalText.slice(start, sg.start_idx) + sg.suggested_phrase + originalText.slice(sg.end_idx, end)).trim();
     }
@@ -88,18 +85,16 @@ export function narrowFix(sentence: string, original: string, suggested: string)
   }
 }
 
-const SENTENCE = /[^.!?\n]+(?:[.!?]+["')\]]*|$)/g;
-
 /**
- * The learner's sentence containing this fix, with every located accuracy/idiom fix in it
- * applied (same rule as the backend's apply_suggestions), so the card holds no other mistakes.
+ * The learner's sentence containing this fix, with every located accuracy/idiom fix in it applied
+ * (same rule as the backend's apply_suggestions), plus where this fix's new text sits in it.
  */
-export function fullyCorrectedSentence(originalText: string, suggestions: SuggestionItem[], sg: SuggestionItem): string | null {
+function correctedSpan(originalText: string, suggestions: SuggestionItem[], sg: SuggestionItem):
+  { text: string; fixStart: number; fixEnd: number } | null {
   if (sg.start_idx < 0 || originalText.slice(sg.start_idx, sg.end_idx) !== sg.original_phrase) return null;
-  for (const m of originalText.matchAll(SENTENCE)) {
-    const start = m.index!, end = start + m[0].length;
+  for (const [start, end] of splitSentences(originalText)) {
     if (sg.start_idx < start || sg.end_idx > end) continue;
-    let out = '', pos = start;
+    let out = '', pos = start, fixStart = -1, fixEnd = -1;
     const applied = suggestions
       .filter((x) => x === sg || ((x.tier || 'accuracy') !== 'style'))
       .filter((x) => x.start_idx >= start && x.end_idx <= end && originalText.slice(x.start_idx, x.end_idx) === x.original_phrase)
@@ -107,16 +102,42 @@ export function fullyCorrectedSentence(originalText: string, suggestions: Sugges
       .sort((a, b) => a.start_idx - b.start_idx);
     for (const x of applied) {
       if (x.start_idx < pos) continue; // overlaps an earlier fix
-      out += originalText.slice(pos, x.start_idx) + x.suggested_phrase;
+      out += originalText.slice(pos, x.start_idx);
+      if (x === sg) fixStart = out.length;
+      out += x.suggested_phrase;
+      if (x === sg) fixEnd = out.length;
       pos = x.end_idx;
     }
-    return (out + originalText.slice(pos, end)).trim();
+    return { text: out + originalText.slice(pos, end), fixStart, fixEnd };
   }
   return null;
 }
 
+/** The corrected learner sentence (may hold two sentences if a fix split a run-on; see cardSentence). */
+export function fullyCorrectedSentence(originalText: string, suggestions: SuggestionItem[], sg: SuggestionItem): string | null {
+  return correctedSpan(originalText, suggestions, sg)?.text.trim() ?? null;
+}
+
+/**
+ * The sentence a grammar card for this fix shows: exactly one complete sentence. When the corrected
+ * text holds two sentences (a fix split a run-on), the one with this fix is used; a fix that itself
+ * moves a sentence boundary cannot be a one-blank card.
+ */
+export function cardSentence(originalText: string, suggestions: SuggestionItem[], sg: SuggestionItem):
+  { sentence: string } | { reason: 'unlocated' | 'boundary' | 'not_sentence' } {
+  const span = correctedSpan(originalText, suggestions, sg);
+  if (!span || span.fixStart < 0) return { reason: 'unlocated' };
+  const piece = splitSentences(span.text).find(([a, b]) => a <= span.fixStart && span.fixEnd <= b);
+  if (!piece) return { reason: 'boundary' };
+  const sentence = span.text.slice(piece[0], piece[1]);
+  return isCompleteSentence(sentence) ? { sentence } : { reason: 'not_sentence' };
+}
+
 export function grammarDraft(originalText: string, suggestions: SuggestionItem[], sg: SuggestionItem): GrammarCardDraft {
-  const sentence = fullyCorrectedSentence(originalText, suggestions, sg) ?? correctedSentence(originalText, sg);
+  const card = cardSentence(originalText, suggestions, sg);
+  const sentence = 'sentence' in card
+    ? card.sentence
+    : fullyCorrectedSentence(originalText, suggestions, sg) ?? correctedSentence(originalText, sg); // the form flags it
   return { sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation, fixId: sg.id };
 }
 
@@ -125,7 +146,7 @@ export function isGrammarFix(sg: SuggestionItem): boolean {
   return sg.category === 'Grammar' && !!sg.suggested_phrase.trim();
 }
 
-export type SkipReason = 'unlocated' | 'blank' | 'same' | 'same_sentence';
+export type SkipReason = 'unlocated' | 'boundary' | 'not_sentence' | 'blank' | 'same' | 'same_sentence';
 
 export interface GrammarPlan {
   cards: GrammarCardDraft[];
@@ -164,18 +185,19 @@ export function planGrammarCards(
   for (const sg of all) {
     if (!sg.id || !registered.has(sg.id)) continue;
     plan.registered.push(sg.id);
-    const sentence = fullyCorrectedSentence(originalText, suggestions, sg);
-    if (sentence !== null) taken.add(sentence.toLowerCase().replace(/\s+/g, ' ').trim());
+    const card = cardSentence(originalText, suggestions, sg);
+    if ('sentence' in card) taken.add(card.sentence.toLowerCase().replace(/\s+/g, ' ').trim());
   }
   const fixes = all
     .filter((sg) => !(sg.id && registered.has(sg.id)))
     .sort((a, b) => Number(!inPattern(a)) - Number(!inPattern(b)) || a.start_idx - b.start_idx);
   for (const sg of fixes) {
-    const sentence = fullyCorrectedSentence(originalText, suggestions, sg);
-    if (sentence === null) {
-      plan.skipped.push({ suggestion: sg, reason: 'unlocated' });
+    const card = cardSentence(originalText, suggestions, sg);
+    if (!('sentence' in card)) {
+      plan.skipped.push({ suggestion: sg, reason: card.reason });
       continue;
     }
+    const sentence = card.sentence;
     const draft: GrammarCardDraft = {
       sentence, ...narrowFix(sentence, sg.original_phrase, sg.suggested_phrase), explanation: sg.explanation, fixId: sg.id,
     };
