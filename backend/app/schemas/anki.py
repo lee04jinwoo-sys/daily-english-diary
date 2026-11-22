@@ -1,4 +1,4 @@
-from typing import Optional, List, Literal
+from typing import Dict, Optional, List, Literal
 from pydantic import BaseModel, Field
 
 CardType = Literal["sentence", "vocab"]
@@ -37,6 +37,18 @@ class CardPreviewResponse(BaseModel):
     example: str
     pos: str
     synonyms: str
+
+class SimilarItem(BaseModel):
+    id: str
+    answer: str
+    mistake: str = ""
+    sentence: str
+
+class SimilarSentencesRequest(BaseModel):
+    items: List[SimilarItem]
+
+class SimilarSentencesResponse(BaseModel):
+    sentences: Dict[str, str]
 
 class UndoCardRequest(BaseModel):
     note_id: int

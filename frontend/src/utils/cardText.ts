@@ -127,19 +127,36 @@ export type SkipReason = 'unlocated' | 'blank' | 'same' | 'same_sentence';
 
 export interface GrammarPlan {
   cards: GrammarCardDraft[];
-  skipped: { suggestion: SuggestionItem; reason: SkipReason }[];
+  /** `draft` is set for 'same_sentence': a valid card that only shares its sentence with a chosen one. */
+  skipped: { suggestion: SuggestionItem; reason: SkipReason; draft?: GrammarCardDraft }[];
 }
 
 /**
- * Every grammar card an essay can yield, in text order. Anki treats two grammar notes with the same
- * sentence as duplicates (the first field alone decides), and a card's sentence has all the sentence's
- * fixes applied, so a sentence with several fixes gets one card: the leftmost valid fix. Fixes that
+ * Every grammar card an essay can yield from the learner's own sentences, in text order. Anki treats
+ * two grammar notes with the same sentence as duplicates (the first field alone decides), and a card's
+ * sentence has all the sentence's fixes applied, so a sentence with several fixes gets one card: the
+ * fix that belongs to a recurring pattern, else the leftmost valid one. The other valid fixes come back
+ * as 'same_sentence' with their draft (they can still get a card on a new, similar sentence). Fixes that
  * cannot make a card are returned with the reason instead of being dropped silently.
  */
-export function planGrammarCards(originalText: string, suggestions: SuggestionItem[]): GrammarPlan {
+export function planGrammarCards(
+  originalText: string,
+  suggestions: SuggestionItem[],
+  patterns: { examples: string[] }[] = [],
+): GrammarPlan {
+  const inPattern = (sg: SuggestionItem) => {
+    const o = sg.original_phrase.trim().toLowerCase();
+    return patterns.some((p) => p.examples.some((e) => {
+      const x = e.trim().toLowerCase();
+      return x.length >= 3 && o.length >= 3 && (x === o || x.includes(o) || o.includes(x));
+    }));
+  };
   const plan: GrammarPlan = { cards: [], skipped: [] };
+  const chosen: { draft: GrammarCardDraft; start: number }[] = [];
   const taken = new Set<string>();
-  const fixes = suggestions.filter(isGrammarFix).sort((a, b) => a.start_idx - b.start_idx);
+  const fixes = suggestions
+    .filter(isGrammarFix)
+    .sort((a, b) => Number(!inPattern(a)) - Number(!inPattern(b)) || a.start_idx - b.start_idx);
   for (const sg of fixes) {
     const sentence = fullyCorrectedSentence(originalText, suggestions, sg);
     if (sentence === null) {
@@ -156,12 +173,13 @@ export function planGrammarCards(originalText: string, suggestions: SuggestionIt
     } else {
       const key = sentence.toLowerCase().replace(/\s+/g, ' ').trim();
       if (taken.has(key)) {
-        plan.skipped.push({ suggestion: sg, reason: 'same_sentence' });
+        plan.skipped.push({ suggestion: sg, reason: 'same_sentence', draft });
       } else {
         taken.add(key);
-        plan.cards.push(draft);
+        chosen.push({ draft, start: sg.start_idx });
       }
     }
   }
+  plan.cards = chosen.sort((a, b) => a.start - b.start).map((c) => c.draft);
   return plan;
 }

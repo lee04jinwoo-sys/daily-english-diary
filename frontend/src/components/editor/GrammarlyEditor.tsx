@@ -628,6 +628,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
                 <BulkGrammarCardsButton
                   originalText={reviewResult.original_text}
                   suggestions={suggestions}
+                  patterns={reviewResult.recurring_patterns}
                   ankiConnected={ankiConnected}
                   disabled={isReviewing}
                   onShowToast={onShowToast}

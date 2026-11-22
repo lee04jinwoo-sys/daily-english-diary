@@ -12,9 +12,11 @@ from app.schemas.anki import (
     CheckExistingCardsRequest,
     CheckExistingCardsResponse,
     UndoCardRequest,
+    SimilarSentencesRequest,
+    SimilarSentencesResponse,
 )
 from app.services.anki_service import anki_service
-from app.services.gemini_service import gemini_service
+from app.services.gemini_service import GeminiError, gemini_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/anki", tags=["Anki"])
@@ -86,3 +88,13 @@ async def undo_card(req: UndoCardRequest):
             detail=res.error or "Anki 카드 취소에 실패했습니다."
         )
     return res
+
+
+@router.post("/similar-sentences", response_model=SimilarSentencesResponse)
+async def similar_sentences(req: SimilarSentencesRequest):
+    """New example sentences for grammar fixes that share a sentence with another fix (see GeminiService)."""
+    try:
+        sentences = await gemini_service.generate_similar_sentences([i.model_dump() for i in req.items])
+    except GeminiError as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"유사 문장 생성에 실패했습니다: {e}")
+    return SimilarSentencesResponse(sentences=sentences)

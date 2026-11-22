@@ -157,6 +157,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ note_id: noteId }),
     }),
+  // New example sentences for grammar fixes that share a sentence with another fix (id -> sentence).
+  similarSentences: (items: { id: string; answer: string; mistake: string; sentence: string }[]) =>
+    fetchJson<{ sentences: Record<string, string> }>('/anki/similar-sentences', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
   addGrammarCard: (data: { sentence: string; answer: string; mistake: string }) =>
     fetchJson<AnkiActionResponse>('/anki/add-grammar', {
       method: 'POST',

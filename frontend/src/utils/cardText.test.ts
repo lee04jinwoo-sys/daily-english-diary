@@ -135,6 +135,41 @@ describe('planGrammarCards', () => {
     expect(plan.cards[0].sentence).toBe('Many people work long hours and they are tired.');
   });
 
+  it('prefers the fix that belongs to a recurring pattern over the leftmost one', () => {
+    const sugg = [
+      fix(TEXT, 'Many people works', 'Many people work', { id: 'first' }),
+      fix(TEXT, 'they is', 'they are', { id: 'habit' }),
+    ];
+    const plan = planGrammarCards(TEXT, sugg, [{ examples: ['they is', 'it are'] }]);
+    expect(plan.cards.length).toBe(1);
+    expect(plan.cards[0].mistake.toLowerCase()).toContain('is');
+    expect(plan.skipped.map((s) => s.suggestion.id)).toEqual(['first']);
+  });
+
+  it('keeps the cards in text order even when a later fix wins its sentence', () => {
+    const sugg = [
+      fix(TEXT, 'He go', 'He goes', { id: 'early' }),
+      fix(TEXT, 'Many people works', 'Many people work', { id: 'a' }),
+      fix(TEXT, 'they is', 'they are', { id: 'b' }),
+    ];
+    const plan = planGrammarCards(TEXT, sugg, [{ examples: ['they is'] }]);
+    expect(plan.cards.map((c) => c.sentence)).toEqual([
+      'He goes to school every day.',
+      'Many people work long hours and they are tired.',
+    ]);
+  });
+
+  it('hands the skipped same-sentence fix back as a usable draft (for a similar sentence)', () => {
+    const sugg = [
+      fix(TEXT, 'Many people works', 'Many people work', { id: 'first', explanation: '수일치' }),
+      fix(TEXT, 'they is', 'they are', { id: 'second', explanation: '복수 동사' }),
+    ];
+    const [skip] = planGrammarCards(TEXT, sugg).skipped;
+    expect(skip.reason).toBe('same_sentence');
+    expect(skip.draft).toMatchObject({ answer: 'are', mistake: 'is', explanation: '복수 동사' });
+    expect(skip.draft!.sentence).toBe('Many people work long hours and they are tired.');
+  });
+
   it('returns nothing for an essay without grammar fixes', () => {
     expect(planGrammarCards(TEXT, [])).toEqual({ cards: [], skipped: [] });
   });

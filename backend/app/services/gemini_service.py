@@ -211,6 +211,22 @@ def parse_argument(raw: dict) -> ArgumentFeedback:
     )
 
 
+def _whole_word(phrase: str) -> "re.Pattern[str]":
+    """The same match the Anki grammar card uses to make its blank: the phrase as whole words, any case."""
+    return re.compile(r"\b" + re.escape(phrase.strip()) + r"\b", re.IGNORECASE)
+
+
+def is_valid_similar_sentence(sentence: str, answer: str, mistake: str, reference: str) -> bool:
+    """A new one-sentence example that gives the grammar card exactly one blank and no wrong-form hint."""
+    s = (sentence or "").strip()
+    if not s or len(split_sentences(s)) != 1 or s.lower() == (reference or "").strip().lower():
+        return False
+    blank = _whole_word(answer)
+    if len(blank.findall(s)) != 1:
+        return False
+    return not (mistake or "").strip() or not _whole_word(mistake).search(blank.sub(" ", s))
+
+
 class GeminiError(RuntimeError):
     """Raised when the AI review could not be produced. Never replaced with fake results."""
 
@@ -773,5 +789,84 @@ JSON 응답 규격:
                     pos="",
                     synonyms=""
                 )
+    async def generate_similar_sentences(self, items: List[dict]) -> dict:
+        """New example sentences for grammar fixes that share a sentence with another fix.
+
+        items: {id, answer, mistake, sentence} (sentence = the learner's corrected sentence, as reference).
+        A sentence is kept only when it passes the code rules (is_valid_similar_sentence) and a second
+        model call that checks grammar and naturalness; a failing item is written once more and then left
+        out. Returns {id: sentence}. Free routes first, like the other non-scoring calls.
+        """
+        pending = {i["id"]: i for i in items}
+        done: dict = {}
+        for _ in range(2):
+            if not pending:
+                break
+            candidates = await self._draft_similar(pending, {s.lower() for s in done.values()})
+            for id_ in await self._check_similar(candidates):
+                done[id_] = candidates[id_]
+                del pending[id_]
+        return done
+
+    @staticmethod
+    def _rows(data) -> List[dict]:
+        """The rows of a model answer; free models sometimes drop the wrapping {"items": [...]}."""
+        rows = data if isinstance(data, list) else (data or {}).get("items", [])
+        return [r for r in rows if isinstance(r, dict)]
+
+    async def _draft_similar(self, pending: dict, taken: set) -> dict:
+        """id -> a new sentence that passes the code rules, for the items still pending."""
+        listing = "\n".join(
+            f'id={i["id"]} | 표현: {i["answer"]} | 틀린 형태: {i["mistake"]} | 참고 문장: {i["sentence"]}'
+            for i in pending.values())
+        prompt = f"""
+아래 항목은 영어 문법 카드용입니다. 항목마다 [표현]이 들어 있는 새로운 자연스러운 영어 문장 하나를 JSON으로 만들어 주세요.
+- 참고 문장과 비슷한 주제와 난이도로 쓰되, 문장 자체는 달라야 합니다.
+- 표현은 철자, 대소문자, 어형을 바꾸지 말고 문장에 정확히 한 번만 쓰세요.
+- 틀린 형태는 문장 어디에도 쓰지 마세요.
+- 문법적으로 완전히 옳은 한 문장이어야 합니다.
+
+{{"items": [{{"id": "...", "sentence": "..."}}]}}
+
+[항목]
+{listing}
+"""
+        try:
+            data = await self._generate_json(prompt, 0.7, free_first=True)
+        except Exception as e:
+            logger.error(f"Similar sentence generation error: {e}", exc_info=True)
+            raise GeminiError(str(e)) from e
+        candidates: dict = {}
+        for row in self._rows(data):
+            it = pending.get(str(row.get("id")))
+            sentence = row.get("sentence")
+            if it is None or not isinstance(sentence, str) or sentence.strip().lower() in taken:
+                continue
+            if is_valid_similar_sentence(sentence, it["answer"], it["mistake"], it["sentence"]):
+                candidates[it["id"]] = sentence.strip()
+                taken.add(sentence.strip().lower())
+        return candidates
+
+    async def _check_similar(self, candidates: dict) -> List[str]:
+        """The ids whose sentence a second model call accepts as grammatical, natural and clear."""
+        if not candidates:
+            return []
+        listing = "\n".join(f"id={id_} | {s}" for id_, s in candidates.items())
+        prompt = f"""
+아래 영어 문장들은 문법 카드의 예문으로 쓰일 것입니다. 문장마다 엄격하게 검사해 JSON으로 답하세요.
+- ok: 문법적으로 완전히 옳고, 원어민이 쓸 만큼 자연스럽고, 뜻이 분명하면 true. 문법 오류가 하나라도 있거나 어색하거나 뜻이 불분명하면 false.
+- problem: ok가 false일 때만, 무엇이 문제인지 한국어로 한 줄.
+
+{{"items": [{{"id": "...", "ok": true, "problem": ""}}]}}
+
+[문장]
+{listing}
+"""
+        try:
+            data = await self._generate_json(prompt, 0, free_first=True)
+        except Exception as e:
+            logger.error(f"Similar sentence check error: {e}", exc_info=True)
+            raise GeminiError(str(e)) from e
+        return [str(r["id"]) for r in self._rows(data) if r.get("ok") is True and str(r.get("id")) in candidates]
 
 gemini_service = GeminiService()
