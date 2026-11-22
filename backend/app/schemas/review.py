@@ -28,7 +28,8 @@ class SentencePair(BaseModel):
     original: str = Field(..., description="User's original draft sentence")
     corrected: str = Field(default="", description="Minimal grammar/spelling fix maintaining user's tone and structure")
     native: str = Field(..., description="Native natural paraphrased sentence")
-    translation: str = Field(..., description="Natural Korean translation")
+    translation: str = Field(..., description="Natural Korean translation of the corrected sentence")
+    native_translation: str = Field(default="", description="Natural Korean translation of the native sentence")
     explanation: str = Field(..., description="Key grammar / expression nuance explanation in Korean")
     vocab: List[VocabItem] = Field(default_factory=list, description="Key vocabulary from this sentence")
 

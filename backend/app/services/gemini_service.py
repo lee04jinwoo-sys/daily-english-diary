@@ -567,47 +567,65 @@ class GeminiService:
 
         listing = "\n".join(f'{r["index"]}. {r["corrected"]}' for r in rows)
         prompt = f"""
-아래는 학습자 문장(교정본) 목록과 같은 내용을 C1+ 수준으로 다시 쓴 글입니다. 문장 번호마다 다음을 JSON으로 주세요.
-- native: 다시 쓴 글에서 그 문장에 대응하는 부분(한두 문장, 다시 쓴 글의 문장을 그대로 사용)
-- translation: native의 자연스러운 한국어 번역
+아래는 학습자 문장(교정본) 목록입니다. 문장 번호마다 다음을 JSON으로 주세요. 번호마다 정확히 하나씩, 번호를 바꾸거나 건너뛰거나 다른 문장의 내용을 섞지 마세요.
+- native: 그 문장 하나를 C1+ 수준의 자연스러운 원어민 영어로 다시 쓴 것 (의미 유지)
+- translation: 교정본 문장의 자연스러운 한국어 번역
+- native_translation: native의 자연스러운 한국어 번역
 - explanation: 교정본과 native의 핵심 차이 한국어 한 문장
 - vocab: native에서 배울 만한 단어·표현 최대 3개 (word, meaning(한국어), pos)
 
-{{"pairs": [{{"index": 1, "native": "...", "translation": "...", "explanation": "...", "vocab": [{{"word": "...", "meaning": "...", "pos": "v"}}]}}]}}
+{{"pairs": [{{"index": 1, "native": "...", "translation": "...", "native_translation": "...", "explanation": "...", "vocab": [{{"word": "...", "meaning": "...", "pos": "v"}}]}}]}}
 
-[학습자 문장]
+[문장별 다시 쓰기]
 {listing}
-
-[다시 쓴 글]
-{review.upgraded_text}
 """
-        try:
-            data = await self._generate_json(prompt, 0.2, free_first=True)
-        except Exception as e:
-            logger.error(f"Sentence pair generation error: {e}", exc_info=True)
-            raise GeminiError(str(e)) from e
-
-        by_index = {}
-        for p in data.get("pairs", []):
+        # A half-filled answer must never be stored: Anki cards are made from these pairs.
+        by_index = None
+        for attempt in range(2):
             try:
-                by_index[int(p.get("index"))] = p
-            except (TypeError, ValueError):
-                continue
+                data = await self._generate_json(prompt, 0.2, free_first=True)
+            except Exception as e:
+                logger.error(f"Sentence pair generation error: {e}", exc_info=True)
+                raise GeminiError(str(e)) from e
+            by_index = self._complete_pairs(data, [r["index"] for r in rows])
+            if by_index is not None:
+                break
+            logger.warning(f"Sentence pairs incomplete (attempt {attempt + 1}); {'retrying' if attempt == 0 else 'giving up'}")
+        if by_index is None:
+            raise GeminiError("문장별 대조가 완전하게 만들어지지 않았습니다. 다시 시도해주세요.")
+
         pairs = []
         for r in rows:
-            p = by_index.get(r["index"], {})
+            p = by_index[r["index"]]
             pairs.append(SentencePair(
                 id=f"S{r['index']}",
                 index=r["index"],
                 original=r["original"],
                 corrected=r["corrected"],
-                native=(p.get("native") or r["corrected"]).strip(),
-                translation=(p.get("translation") or "").strip(),
+                native=p["native"].strip(),
+                translation=p["translation"].strip(),
+                native_translation=p["native_translation"].strip(),
                 explanation=(p.get("explanation") or "").strip(),
                 vocab=[VocabItem(word=v.get("word", ""), meaning=v.get("meaning", ""), pos=v.get("pos", ""))
                        for v in (p.get("vocab") or [])[:3] if isinstance(v, dict) and v.get("word")],
             ))
         return pairs
+
+    @staticmethod
+    def _complete_pairs(data: dict, indexes: List[int]) -> Optional[dict]:
+        """index -> pair when every sentence has a native rewrite and both translations, else None."""
+        by_index = {}
+        for p in data.get("pairs", []):
+            try:
+                by_index[int(p.get("index"))] = p
+            except (TypeError, ValueError, AttributeError):
+                continue
+        for i in indexes:
+            p = by_index.get(i)
+            if not p or not all(isinstance(p.get(k), str) and p[k].strip()
+                                for k in ("native", "translation", "native_translation")):
+                return None
+        return {i: by_index[i] for i in indexes}
 
     async def lookup_word(self, word: str, context: str = "") -> dict:
         """Instant dictionary lookup adhering to Anki Manager / Shadowing Player standards."""

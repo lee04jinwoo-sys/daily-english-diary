@@ -23,7 +23,8 @@ interface SentenceStudyViewProps {
 interface EditableSentence {
   corrected: string;
   native: string;
-  translation: string;
+  translation: string; // Korean of the corrected sentence
+  nativeTranslation: string; // Korean of the native sentence
 }
 
 // Clean word for punctuation-independent comparison
@@ -137,6 +138,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
         corrected: p.corrected || p.original,
         native: p.native,
         translation: p.translation,
+        nativeTranslation: p.native_translation || '',
       };
     });
     if (Object.keys(initial).length > 0) {
@@ -174,7 +176,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
     setEditedData((prev) => ({
       ...prev,
       [id]: {
-        ...(prev[id] || { corrected: '', native: '', translation: '' }),
+        ...(prev[id] || { corrected: '', native: '', translation: '', nativeTranslation: '' }),
         [field]: value,
       },
     }));
@@ -360,6 +362,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
             corrected: sp.corrected || sp.original,
             native: sp.native,
             translation: sp.translation,
+            nativeTranslation: sp.native_translation || '',
           };
 
           const corrKey = `${sp.id}-corr`;
@@ -656,6 +659,11 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                             {renderInteractiveSentence(current.native, current.native)}
                           </div>
                         )}
+                        {current.nativeTranslation && (
+                          <div className="mt-1.5 text-xs text-stone-500 dark:text-stone-400 leading-relaxed break-words">
+                            {current.nativeTranslation}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-1.5 shrink-0 pt-0.5">
@@ -672,7 +680,7 @@ export const SentenceStudyView: React.FC<SentenceStudyViewProps> = ({
                         </button>
 
                         <button
-                          onClick={() => handleDirectAddSentence(natKey, current.native, current.translation)}
+                          onClick={() => handleDirectAddSentence(natKey, current.native, current.nativeTranslation)}
                           disabled={isNatSaving}
                           className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-xs active:scale-95 border ${
                             isNatSaved

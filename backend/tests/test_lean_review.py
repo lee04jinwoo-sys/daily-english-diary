@@ -99,8 +99,10 @@ async def test_key_expressions_without_example_are_accepted(client, monkeypatch)
 
 PAIRS = {"pairs": [
     {"index": 1, "native": "Many people work long hours.", "translation": "많은 사람이 오래 일한다.",
+     "native_translation": "많은 사람이 장시간 일한다.",
      "explanation": "수일치", "vocab": [{"word": "long hours", "meaning": "장시간", "pos": "n"}]},
     {"index": 2, "native": "I use social media and the internet daily.", "translation": "매일 쓴다.",
+     "native_translation": "나는 매일 소셜 미디어와 인터넷을 쓴다.",
      "explanation": "관사", "vocab": []},
 ]}
 

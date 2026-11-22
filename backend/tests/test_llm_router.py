@@ -164,7 +164,8 @@ async def test_anki_preview_goes_free_first(monkeypatch, card_type):
 async def test_sentence_pairs_go_free_first(monkeypatch):
     from app.schemas.review import ReviewResponse
     from tests.test_essays import FAKE_REVIEW
-    calls = fake_free(monkeypatch, {"pairs": []})
+    calls = fake_free(monkeypatch, {"pairs": [{"index": 1, "native": "Cats delight me.", "translation": "나는 고양이를 좋아한다.",
+                                               "native_translation": "고양이는 나를 기쁘게 한다.", "explanation": "x"}]})
     monkeypatch.setattr(gs.gemini_service, "_client", Router())
     review = ReviewResponse(**{**FAKE_REVIEW, "essay_id": "e1", "original_text": "I like cats.", "upgraded_text": "Cats delight me."})
     await gs.gemini_service.generate_sentence_pairs(review)

@@ -39,7 +39,8 @@ export interface SentencePair {
   original: string;
   corrected: string;
   native: string;
-  translation: string;
+  translation: string; // Korean of the corrected sentence
+  native_translation?: string; // Korean of the native sentence (absent on pairs stored before this field)
   explanation: string;
   vocab: VocabItem[];
 }

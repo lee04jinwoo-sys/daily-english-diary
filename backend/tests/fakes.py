@@ -11,7 +11,7 @@ def role_of(prompt: str) -> str:
         return "detect"
     if "[교정 검증]" in prompt:
         return "verify"
-    if "[다시 쓴 글]" in prompt:
+    if "[문장별 다시 쓰기]" in prompt:
         return "pairs"
     if "[밴드 채점-내용]" in prompt:
         return "score_content"
