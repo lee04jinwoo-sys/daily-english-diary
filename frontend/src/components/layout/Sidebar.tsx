@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { EssayListItem, ESSAY_TYPE_LABELS } from '../../types/essay';
+import { CRITERIA, bandDelta, weakestCriteria, wordsPerMinute } from '../../utils/essaySummary';
 import {
   Search,
   Trash2,
@@ -67,6 +68,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           filteredEssays.map((essay) => {
             const isSelected = essay.id === currentEssayId;
+            const delta = bandDelta(essay, essays);
+            const weakest = weakestCriteria(essay.bands);
+            const wpm = wordsPerMinute(essay.word_count, essay.writing_seconds);
             return (
               <div
                 key={essay.id}
@@ -94,8 +98,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   <div className="flex items-center space-x-1">
                     {essay.overall_band != null ? (
-                      <span className="text-[10px] tabular-nums text-stone-400 dark:text-stone-500" title="AI 추정 점수 (참고용)">
-                        {essay.overall_band.toFixed(1)}
+                      <span className="inline-flex items-center space-x-1 text-[10px] tabular-nums text-stone-400 dark:text-stone-500">
+                        <span title="AI 추정 점수 (참고용)">{essay.overall_band.toFixed(1)}</span>
+                        {delta != null && delta !== 0 && (
+                          <span
+                            className={delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}
+                            title={essay.revision_of ? '원본 대비' : '직전 첨삭 대비'}
+                          >
+                            {delta > 0 ? '▲' : '▼'}
+                            {Math.abs(delta).toFixed(1)}
+                          </span>
+                        )}
                       </span>
                     ) : (
                       <span className="text-[10px] text-stone-400 dark:text-stone-500">미첨삭</span>
@@ -121,10 +134,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {essay.prompt}
                 </div>
 
+                {essay.bands && (
+                  <div className="flex items-center gap-x-2 mt-1.5 text-[10px] tabular-nums" title="과제 달성도 · 일관성 · 어휘 · 문법 (가장 낮은 항목은 빨간색)">
+                    {CRITERIA.map((c) => (
+                      <span
+                        key={c.key}
+                        className={weakest.includes(c.key) ? 'text-rose-500 dark:text-rose-400 font-semibold' : 'text-stone-500 dark:text-stone-400'}
+                      >
+                        {c.label} {essay.bands![c.key].toFixed(1)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-[10px] text-[#a8a7a1] dark:text-[#707070] mt-1.5">
                   <span>
                     {essay.word_count} 단어
                     {essay.writing_seconds > 0 && ` · ${Math.max(1, Math.round(essay.writing_seconds / 60))}분`}
+                    {wpm != null && ` · ${wpm} wpm`}
+                    {essay.correction_count > 0 && ` · 교정 ${essay.correction_count}(문법 ${essay.grammar_count})`}
                   </span>
                   <button
                     onClick={(e) => {

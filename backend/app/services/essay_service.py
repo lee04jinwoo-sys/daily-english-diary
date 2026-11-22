@@ -161,6 +161,7 @@ class EssayService:
                 writing_seconds=r["writing_seconds"],
                 preview=preview[:80] + ("..." if len(preview) > 80 else ""),
                 updated_at=r["updated_at"],
+                **review_summary(r["review_json"]),
             ))
         written_dates = {i.date for i in items if i.word_count > 0}
         return EssayListResponse(essays=items, total_count=len(items), streak=current_streak(written_dates))
@@ -205,6 +206,43 @@ class EssayService:
             )
             for r in rows
         ]
+
+
+_CRITERIA = ("task_response", "coherence", "lexical", "grammar")
+
+
+def _criterion_bands(rubric) -> Optional[dict]:
+    """The four criterion bands, or None unless all four are numbers."""
+    try:
+        bands = {key: rubric[key]["band"] for key in _CRITERIA}
+    except (KeyError, TypeError):
+        return None
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in bands.values()):
+        return None
+    return {k: float(v) for k, v in bands.items()}
+
+
+def review_summary(review_json: Optional[str]) -> dict:
+    """Criterion bands and correction counts for the sidebar, read from the stored review.
+
+    Never raises: an odd review must not break the whole list.
+    """
+    empty = {"bands": None, "correction_count": 0, "grammar_count": 0}
+    if not review_json:
+        return empty
+    try:
+        review = json.loads(review_json)
+    except ValueError:
+        return empty
+    if not isinstance(review, dict):
+        return empty
+    suggestions = review.get("suggestions")
+    suggestions = [x for x in suggestions if isinstance(x, dict)] if isinstance(suggestions, list) else []
+    return {
+        "bands": _criterion_bands(review.get("rubric")),
+        "correction_count": len(suggestions),
+        "grammar_count": sum(1 for x in suggestions if x.get("category") == "Grammar"),
+    }
 
 
 def current_streak(dates: set, today: Optional[datetime.date] = None) -> int:

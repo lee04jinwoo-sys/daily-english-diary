@@ -1,6 +1,6 @@
 import datetime
 import re
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.review import ReviewResponse
@@ -73,6 +73,9 @@ class EssayListItem(BaseModel):
     writing_seconds: int = 0
     preview: str
     updated_at: str
+    bands: Optional[Dict[str, float]] = Field(default=None, description="Criterion bands of the stored review")
+    correction_count: int = 0
+    grammar_count: int = 0
 
 
 class EssayListResponse(BaseModel):

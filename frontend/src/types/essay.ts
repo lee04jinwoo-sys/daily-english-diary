@@ -164,6 +164,9 @@ export interface EssayListItem {
   writing_seconds: number;
   preview: string;
   updated_at: string;
+  bands: Record<'task_response' | 'coherence' | 'lexical' | 'grammar', number> | null;
+  correction_count: number;
+  grammar_count: number;
 }
 
 export interface EssayListResponse {
