@@ -10,6 +10,7 @@ import { BulkGrammarCardsButton } from '../anki/BulkGrammarCardsButton';
 import { useWritingTimer, formatDuration, IDLE_LIMIT_MS } from '../../hooks/useWritingTimer';
 import { api } from '../../api/client';
 import { GrammarCardDraft, correctedSentence, grammarDraft, isGrammarFix } from '../../utils/cardText';
+import { PairsState, shouldPrefetchSentencePairs } from '../../utils/sentencePairs';
 import { 
   Sparkles, 
   BookOpen, 
@@ -43,6 +44,7 @@ interface GrammarlyEditorProps {
   ankiConnected: boolean;
   registeredFixIds: ReadonlySet<string>;
   onGrammarRegistered: (fixIds: string[]) => void;
+  onSentencePairsLoaded?: (essayId: string, pairs: SentencePair[]) => void;
 }
 
 export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
@@ -64,37 +66,67 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   ankiConnected,
   registeredFixIds,
   onGrammarRegistered,
+  onSentencePairsLoaded,
 }) => {
   const essayId = essay.id;
   const timer = useWritingTimer(essay.id, essay.writing_seconds);
 
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'editor' | 'sentence' | 'native'>('editor');
-  // Sentence pairs are generated on demand the first time the tab is opened.
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const onSentencePairsLoadedRef = useRef(onSentencePairsLoaded);
+  onSentencePairsLoadedRef.current = onSentencePairsLoaded;
+
+  // Sentence pairs are prefetched in the background as soon as a review is ready.
   const [lazyPairs, setLazyPairs] = useState<SentencePair[] | null>(null);
-  const [pairsState, setPairsState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [pairsState, setPairsState] = useState<PairsState>('idle');
+  const pairsRequestSeqRef = useRef(0);
   const storedPairs = reviewResult?.sentence_pairs || [];
   const sentencePairs = storedPairs.length > 0 ? storedPairs : lazyPairs || [];
 
   useEffect(() => {
+    return () => {
+      pairsRequestSeqRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    pairsRequestSeqRef.current += 1;
     setLazyPairs(null);
     setPairsState('idle');
   }, [reviewResult]);
 
   useEffect(() => {
     // During a review nothing is saved yet, so there is nothing to build pairs from.
-    if (activeTab !== 'sentence' || !reviewResult || isReviewing || storedPairs.length > 0 || lazyPairs || pairsState !== 'idle') return;
+    if (
+      !shouldPrefetchSentencePairs({
+        hasReview: Boolean(reviewResult),
+        isReviewing,
+        storedCount: storedPairs.length,
+        hasLazyPairs: Boolean(lazyPairs),
+        pairsState,
+      })
+    ) {
+      return;
+    }
+    const seq = ++pairsRequestSeqRef.current;
     setPairsState('loading');
     api.getSentencePairs(essay.id)
       .then((pairs) => {
+        if (pairsRequestSeqRef.current !== seq) return;
         setLazyPairs(pairs);
         setPairsState('idle');
+        onSentencePairsLoadedRef.current?.(essay.id, pairs);
       })
       .catch((e) => {
+        if (pairsRequestSeqRef.current !== seq) return;
         setPairsState('error');
-        onShowToast(`문장별 대조를 만들지 못했습니다: ${e.message}`);
+        if (activeTabRef.current === 'sentence') {
+          onShowToast(`문장별 대조를 만들지 못했습니다: ${e.message}`);
+        }
       });
-  }, [activeTab, reviewResult, isReviewing, storedPairs.length, lazyPairs, pairsState, essay.id, onShowToast]);
+  }, [reviewResult, isReviewing, storedPairs.length, lazyPairs, pairsState, essay.id, onShowToast]);
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [savingVocabIndex, setSavingVocabIndex] = useState<number | null>(null);

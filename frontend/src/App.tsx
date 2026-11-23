@@ -362,6 +362,11 @@ export function App() {
             ankiConnected={!!ankiStatus?.connected}
             registeredFixIds={registeredFixIds}
             onGrammarRegistered={markGrammarRegistered}
+            onSentencePairsLoaded={(loadedEssayId, pairs) => {
+              setReviewResult((prev) =>
+                prev && prev.essay_id === loadedEssayId ? { ...prev, sentence_pairs: pairs } : prev
+              );
+            }}
           />
         )}
 
