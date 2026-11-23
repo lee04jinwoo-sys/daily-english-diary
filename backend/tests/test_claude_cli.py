@@ -78,6 +78,30 @@ async def test_cli_failure_raises_claude_cli_error(answer):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("text", [
+    'Here is the result:\n{"ok": 4}\nLet me know if you need more.',
+    'Sure.\n```json\n{"ok": 4}\n```\nDone.',
+    '{"ok": 4}\n(checked all items)',
+])
+async def test_json_wrapped_in_prose_is_still_read(text):
+    data, _ = await claude_cli.generate_json("p", run=FakeRun((0, envelope(text), "")))
+    assert data == {"ok": 4}
+
+
+@pytest.mark.anyio
+async def test_a_bare_json_list_is_read():
+    data, _ = await claude_cli.generate_json("p", run=FakeRun((0, envelope('[{"id": 1}]'), "")))
+    assert data == [{"id": 1}]
+
+
+@pytest.mark.anyio
+async def test_the_error_shows_the_start_of_what_the_model_said():
+    with pytest.raises(json.JSONDecodeError) as e:
+        await claude_cli.generate_json("p", run=FakeRun((0, envelope("I cannot do that."), "")))
+    assert "I cannot do that." in str(e.value)
+
+
+@pytest.mark.anyio
 async def test_unparseable_model_text_raises_json_error():
     with pytest.raises(json.JSONDecodeError):
         await claude_cli.generate_json("p", run=FakeRun((0, envelope("{bad"), "")))

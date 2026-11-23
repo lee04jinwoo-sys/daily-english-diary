@@ -910,12 +910,18 @@ JSON 응답 규격:
         return {"cards": cards, "rejected": {id_: reasons.get(id_, "검사를 통과하지 못했습니다.") for id_ in pending}}
 
     async def _card_call(self, prompt: str):
-        try:
-            data, _ = await claude_cli.generate_json(prompt, settings.CLAUDE_CARD_MODEL)
-        except Exception as e:  # CLI down, limit reached, unreadable answer
-            logger.error(f"Card preparation call failed: {e}", exc_info=True)
-            raise GeminiError(str(e)) from e
-        return self._rows(data)
+        """One Sonnet call; an unreadable answer is asked again once (long batches sometimes break JSON)."""
+        for attempt in range(2):
+            try:
+                data, _ = await claude_cli.generate_json(prompt, settings.CLAUDE_CARD_MODEL)
+                return self._rows(data)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Card preparation answer was not JSON (attempt {attempt + 1}): {e}")
+                if attempt == 1:
+                    raise GeminiError(f"카드 검사 응답을 읽을 수 없습니다: {e}") from e
+            except Exception as e:  # CLI down, limit reached
+                logger.error(f"Card preparation call failed: {e}", exc_info=True)
+                raise GeminiError(str(e)) from e
 
     async def _fix_and_translate(self, pending: dict, reasons: dict) -> dict:
         """id -> {sentence, translation} for the drafts that pass the code rules."""

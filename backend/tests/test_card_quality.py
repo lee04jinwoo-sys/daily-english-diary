@@ -113,6 +113,22 @@ async def test_a_cli_failure_is_raised(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_an_unreadable_answer_is_asked_again_once(monkeypatch):
+    bad = json.JSONDecodeError("no json", "", 0)
+    calls = script(monkeypatch, bad, drafts(a=(GOOD, KO)), verdict(ok=["a"]))
+    assert (await gemini_service.prepare_grammar_cards([ITEM]))["cards"]["a"]["sentence"] == GOOD
+    assert len(calls) == 3
+
+
+@pytest.mark.anyio
+async def test_two_unreadable_answers_in_a_row_are_raised(monkeypatch):
+    bad = json.JSONDecodeError("no json", "", 0)
+    script(monkeypatch, bad, bad)
+    with pytest.raises(GeminiError):
+        await gemini_service.prepare_grammar_cards([ITEM])
+
+
+@pytest.mark.anyio
 async def test_endpoint(client, monkeypatch):
     script(monkeypatch, drafts(a=(GOOD, KO)), verdict(ok=["a"]))
     res = await client.post("/api/anki/prepare-grammar-cards", json={"items": [ITEM]})

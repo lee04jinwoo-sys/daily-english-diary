@@ -64,6 +64,25 @@ async def generate_json(prompt: str, model: Optional[str] = None, run=None):
         "output_tokens": u.get("output_tokens") or 0,
         "thinking_tokens": (u.get("output_tokens_details") or {}).get("thinking_tokens") or 0,
     }
-    text = envelope.get("result") or ""
-    m = _FENCE.match(text)
-    return json.loads(m.group(1) if m else text, strict=False), usage
+    return parse_json_text(envelope.get("result") or ""), usage
+
+
+def parse_json_text(text: str):
+    """The JSON in a model answer: the whole text, a fenced block, or the first object/list inside prose
+    (long answers sometimes start with a sentence). The error carries the start of the answer."""
+    t = text.strip()
+    m = _FENCE.match(t)
+    if m:
+        t = m.group(1)
+    try:
+        return json.loads(t, strict=False)
+    except json.JSONDecodeError:
+        pass
+    decoder = json.JSONDecoder(strict=False)
+    for i, ch in enumerate(t):
+        if ch in "{[":
+            try:
+                return decoder.raw_decode(t, i)[0]
+            except json.JSONDecodeError:
+                continue
+    raise json.JSONDecodeError(f"no JSON in the model answer: {t[:200]!r}", t, 0)
