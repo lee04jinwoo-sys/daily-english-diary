@@ -17,6 +17,15 @@ cd "$DIR/backend"
 "$DIR/backend/.venv/bin/python" run.py &
 BACKEND_PID=$!
 
+# Second error detector (GECToR). Optional: set up once with gec/setup.sh; without it reviews run as before.
+GEC_PID=""
+if [ -x "$DIR/gec/.venv/bin/python" ]; then
+    lsof -ti :8010 | xargs kill -9 2>/dev/null
+    echo "🔎 GECToR 문법 탐지 서버 구동 중... (http://127.0.0.1:8010)"
+    "$DIR/gec/.venv/bin/python" "$DIR/gec/server.py" &
+    GEC_PID=$!
+fi
+
 # Start Frontend
 echo "✨ 2. 프론트엔드(Vite React) 개발 서버 구동 중... (http://localhost:5173)"
 cd "$DIR/frontend"
@@ -32,6 +41,7 @@ cleanup() {
     echo "🛑 Daily English Essay 서버를 종료합니다..."
     kill $BACKEND_PID 2>/dev/null
     kill $FRONTEND_PID 2>/dev/null
+    [ -n "$GEC_PID" ] && kill $GEC_PID 2>/dev/null
     exit 0
 }
 

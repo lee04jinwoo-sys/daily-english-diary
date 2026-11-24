@@ -38,3 +38,14 @@ def no_free_llm_keys(monkeypatch):
 def review_on_gemini_by_default(monkeypatch):
     """Existing tests fake the Gemini client; tests of the Claude CLI backend switch it on themselves."""
     monkeypatch.setattr(settings, "REVIEW_BACKEND", "gemini")
+
+
+@pytest.fixture(autouse=True)
+def gec_off_by_default(monkeypatch):
+    """The local GECToR server is never called in tests; tests of the second detector fake it themselves."""
+    from app.services import gec_client
+
+    async def unavailable(sentences):
+        return None
+
+    monkeypatch.setattr(gec_client, "correct", unavailable)

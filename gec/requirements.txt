@@ -1,0 +1,4 @@
+# GECToR server only (Python 3.12). The diary backend does not import any of this.
+torch==2.15.0
+transformers==4.57.6
+gector @ git+https://github.com/gotutiyan/gector.git@a4a342ed7c4733a34263443b605b7edffbef7099

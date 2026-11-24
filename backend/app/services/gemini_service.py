@@ -11,7 +11,7 @@ from typing import Optional, List
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.services import claude_cli, llm_router
+from app.services import claude_cli, gec_client, llm_router
 from app.schemas.review import (
     ReviewResponse, SuggestionItem, KeyExpression, SentencePair, VocabItem,
     EssayRubric, CriterionScore, ArgumentFeedback, ParagraphComment, RecurringPattern,
@@ -428,7 +428,9 @@ class GeminiService:
             return candidates, [], False
 
         accepted = {str(v.get("id")) for v in verdicts if isinstance(v, dict) and v.get("valid") is True}
-        kept = [c for c in candidates if c.id in accepted]
+        reasons = {str(v.get("id")): str(v.get("reason") or "").strip() for v in verdicts if isinstance(v, dict)}
+        kept = [c if c.explanation or not reasons.get(c.id) else c.model_copy(update={"explanation": reasons[c.id]})
+                for c in candidates if c.id in accepted]
         by_id = {c.id: c for c in kept}
 
         patterns: List[RecurringPattern] = []
@@ -455,10 +457,32 @@ class GeminiService:
         return kept, patterns[:4], True
 
     async def _find_errors(self, essay_id: str, prompt_text: str, content: str, spans: List[tuple]):
-        data = await self._generate_json(build_detect_prompt(prompt_text, content, spans), 0,
-                                         thinking_budget=DETECT_THINKING_BUDGET, label="detect", essay_id=essay_id)
+        # The local GECToR server runs while the main detector does; its finds are extra candidates.
+        gec_task = asyncio.create_task(gec_client.correct([content[a:b] for a, b in spans]))
+        try:
+            data = await self._generate_json(build_detect_prompt(prompt_text, content, spans), 0,
+                                             thinking_budget=DETECT_THINKING_BUDGET, label="detect", essay_id=essay_id)
+        except BaseException:
+            gec_task.cancel()
+            raise
         candidates, dropped = self._candidates(content, spans, data.get("suggestions"))
+        main_count = len(candidates)
+        corrected = await gec_task
+        if corrected is not None:
+            taken = [(c.start_idx, c.end_idx) for c in candidates]
+            for g in gec_client.edits_to_candidates(content, spans, corrected):
+                if any(not (g["end_idx"] <= s or g["start_idx"] >= e) for s, e in taken):
+                    continue                  # the main detector already covers this spot
+                taken.append((g["start_idx"], g["end_idx"]))
+                candidates.append(SuggestionItem(id=f"c{len(candidates) + 1}", is_applied=False,
+                                                 **{k: g[k] for k in ("original_phrase", "suggested_phrase", "category",
+                                                                      "subcategory", "tier", "explanation",
+                                                                      "start_idx", "end_idx")}))
         kept, patterns, verified = await self._verify(essay_id, prompt_text, content, spans, candidates)
+        if corrected is not None:
+            gec_ids = {c.id for c in candidates[main_count:]}
+            record_metric({"label": "gec", "essay_id": essay_id, "candidates": len(gec_ids),
+                           "kept": sum(1 for c in kept if c.id in gec_ids)})
         return candidates, dropped, kept, patterns, verified
 
     async def _score(self, essay_id: str, prompt: str, label: str, criteria) -> dict:
