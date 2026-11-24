@@ -108,6 +108,13 @@ def test_grammar_card_sends_my_mistake_as_a_wrong_option(fake_anki, gateway):
     assert "addNote" not in fake_anki["calls"]
 
 
+def test_grammar_card_sends_checked_wrong_options_after_my_mistake(fake_anki, gateway):
+    anki_service.add_grammar_card(GrammarCardRequest(
+        sentence="I am looking forward to meeting you.", answer="meeting", mistake="meet",
+        distractors=["to meet", "met"]))
+    assert gateway[0][1]["distractors"] == ["meet", "to meet", "met"]
+
+
 def test_grammar_card_without_a_mistake_lets_the_gateway_make_all_options(fake_anki, gateway):
     anki_service.add_grammar_card(GrammarCardRequest(sentence="It is a book.", answer="a", mistake="  "))
     assert gateway[0][1]["distractors"] == []

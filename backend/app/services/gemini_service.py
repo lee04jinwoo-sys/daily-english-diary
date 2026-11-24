@@ -243,6 +243,18 @@ def card_draft_problem(sentence: str, translation: str, answer: str) -> Optional
     return None
 
 
+def distractor_problem(distractors: List[str], answer: str, mistake: str) -> Optional[str]:
+    """Why Sonnet's wrong options cannot be used, or None: exactly two, non-empty, different from each other,
+    from the answer and from my mistake (case-insensitive, as the gateway compares them)."""
+    seen = {answer.strip().lower(), mistake.strip().lower()} - {""}
+    if len(distractors) != 2 or any(not d for d in distractors):
+        return "오답 보기 2개가 필요합니다."
+    lowered = [d.lower() for d in distractors]
+    if len(set(lowered)) != 2 or seen & set(lowered):
+        return "오답 보기가 정답·틀린 형태·서로와 겹칩니다."
+    return None
+
+
 class GeminiError(RuntimeError):
     """Raised when the AI review could not be produced. Never replaced with fake results."""
 
@@ -903,7 +915,7 @@ JSON 응답 규격:
             for id_, draft in drafts.items():
                 problem = verdicts.get(id_, "검사 결과가 없습니다.")
                 if problem is None:
-                    cards[id_] = draft
+                    cards[id_] = {k: draft[k] for k in ("sentence", "translation", "distractors")}
                     del pending[id_]
                 else:
                     reasons[id_] = problem
@@ -933,8 +945,11 @@ JSON 응답 규격:
 - sentence: 문장에 문법 오류(수일치, 관사, 셀 수 없는 명사, 시제, 쉼표로 문장 이어 붙이기 등)가 있으면 최소한으로 고친 문장, 없으면 그대로.
   반드시 완전한 한 문장이어야 합니다. 빈칸 정답은 철자와 형태를 바꾸지 말고 정확히 한 번만 남기세요. 뜻은 바꾸지 마세요.
 - translation: 최종 sentence의 자연스러운 한국어 번역. 빠뜨리거나 덧붙이지 말고 주어와 내용을 그대로 옮기세요.
+- distractors: 빈칸 정답 자리에 들어갈 오답 보기 2개. 정답과 같은 종류의 형태(관사·시제·전치사·수 등)로 만들되,
+  빈칸에 넣으면 문장이 문법적으로 분명히 틀려야 합니다. 맞는 문장이 될 수 있는 표현(동의어, 다른 맞는 전치사 등)은 쓰지 마세요.
+  빈칸 정답, 틀린 형태와 달라야 하고, 둘이 서로 달라야 합니다. 문장 맨 앞 빈칸이면 첫 글자를 대문자로 쓰세요.
 
-{{"items": [{{"id": "...", "sentence": "...", "translation": "..."}}]}}
+{{"items": [{{"id": "...", "sentence": "...", "translation": "...", "distractors": ["...", "..."]}}]}}
 
 [항목]
 {listing}
@@ -946,25 +961,33 @@ JSON 응답 규격:
                 continue
             sentence = str(row.get("sentence") or "").strip()
             translation = str(row.get("translation") or "").strip()
-            problem = card_draft_problem(sentence, translation, it["answer"])
+            raw = row.get("distractors")
+            distractors = [str(d).strip() for d in raw] if isinstance(raw, list) else []
+            problem = card_draft_problem(sentence, translation, it["answer"]) \
+                or distractor_problem(distractors, it["answer"], it.get("mistake", ""))
             if problem:
                 reasons[it["id"]] = problem
             else:
-                out[it["id"]] = {"sentence": sentence, "translation": translation}
+                out[it["id"]] = {"sentence": sentence, "translation": translation, "distractors": distractors,
+                                 "answer": it["answer"], "mistake": it.get("mistake", "")}
         return out
 
     async def _check_cards(self, drafts: dict) -> dict:
         """id -> None when Sonnet accepts both the grammar and the translation, else the problem."""
         if not drafts:
             return {}
-        listing = "\n".join(f'id={id_} | 문장: {d["sentence"]} | 해설: {d["translation"]}' for id_, d in drafts.items())
+        listing = "\n".join(
+            f'id={id_} | 문장: {d["sentence"]} | 해설: {d["translation"]} | 빈칸 정답: {d["answer"]} | '
+            f'오답 보기: {" / ".join(o for o in [d["mistake"], *d["distractors"]] if o)}'
+            for id_, d in drafts.items())
         prompt = f"""
 아래는 영어 학습 카드입니다. 카드마다 엄격하게 검사해 JSON으로만 답하세요.
 - grammar_ok: 영어 문장이 문법적으로 완전히 옳은 한 문장이면 true. 수일치, 관사, 셀 수 없는 명사, 쉼표로 문장을 이어 붙인 것(comma splice) 등 오류가 하나라도 있으면 false.
 - translation_ok: 한국어 해설이 영어 문장의 뜻을 빠짐없이, 다르게 바꾸지 않고 옮겼으면 true. 오역, 빠진 내용, 다른 단어(예: 주어가 다름)가 있으면 false.
+- single_answer_ok: 문장에서 빈칸 정답 자리에 오답 보기를 하나씩 넣었을 때 모두 틀린 문장이 되면 true. 하나라도 맞는 문장(또는 자연스러운 다른 뜻의 문장)이 되면 false.
 - problem: false인 항목이 있을 때만 무엇이 문제인지 한국어로 한 줄.
 
-{{"items": [{{"id": "...", "grammar_ok": true, "translation_ok": true, "problem": ""}}]}}
+{{"items": [{{"id": "...", "grammar_ok": true, "translation_ok": true, "single_answer_ok": true, "problem": ""}}]}}
 
 [카드]
 {listing}
@@ -973,8 +996,8 @@ JSON 응답 규격:
         for row in await self._card_call(prompt):
             id_ = str(row.get("id"))
             if id_ in drafts:
-                ok = row.get("grammar_ok") is True and row.get("translation_ok") is True
-                verdicts[id_] = None if ok else (str(row.get("problem") or "").strip() or "문법 또는 해설 검사를 통과하지 못했습니다.")
+                ok = all(row.get(k) is True for k in ("grammar_ok", "translation_ok", "single_answer_ok"))
+                verdicts[id_] = None if ok else (str(row.get("problem") or "").strip() or "문법·해설·단일 정답 검사를 통과하지 못했습니다.")
         return verdicts
 
 

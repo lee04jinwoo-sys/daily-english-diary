@@ -86,7 +86,7 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
       );
       candidates.forEach((d, i) => {
         const c = res.cards[String(i)];
-        if (c) (i < plan.cards.length ? own : sim).push({ ...d, sentence: c.sentence, translation: c.translation });
+        if (c) (i < plan.cards.length ? own : sim).push({ ...d, sentence: c.sentence, translation: c.translation, distractors: c.distractors });
         else rejected.push(`${d.sentence.slice(0, 60)}${d.sentence.length > 60 ? '…' : ''} — ${res.rejected[String(i)] ?? '검사 실패'}`);
       });
     } catch (e: any) {
@@ -126,7 +126,7 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
       try {
         const res = await api.addGrammarCard({
           sentence: draft.sentence, answer: draft.answer, mistake: draft.mistake, essay_id: essayId, fix_id: draft.fixId,
-          translation: draft.translation,
+          translation: draft.translation, distractors: draft.distractors,
         });
         if (!res.success) { failed++; continue; }
         if (res.duplicate) duplicate++;

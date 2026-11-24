@@ -15,15 +15,20 @@ from app.services.gemini_service import GeminiError, gemini_service
 ITEM = {"id": "a", "sentence": "The result of the accidents are unpredictable.", "answer": "accidents", "mistake": "accident"}
 GOOD = "The result of the accidents is unpredictable."
 KO = "그 사고들의 결과는 예측할 수 없다."
+D = ["an accident", "accident's"]   # Sonnet's two wrong options (the third is my mistake)
 
 
-def drafts(**by_id):
-    return {"items": [{"id": k, "sentence": s, "translation": t} for k, (s, t) in by_id.items()]}
+def drafts(distractors=None, **by_id):
+    return {"items": [{"id": k, "sentence": s, "translation": t, "distractors": D if distractors is None else distractors}
+                      for k, (s, t) in by_id.items()]}
 
 
-def verdict(ok=(), bad=()):
-    return {"items": [{"id": i, "grammar_ok": True, "translation_ok": True} for i in ok]
-            + [{"id": i, "grammar_ok": False, "translation_ok": True, "problem": f"problem {i}"} for i in bad]}
+def verdict(ok=(), bad=(), single_bad=()):
+    return {"items": [{"id": i, "grammar_ok": True, "translation_ok": True, "single_answer_ok": True} for i in ok]
+            + [{"id": i, "grammar_ok": False, "translation_ok": True, "single_answer_ok": True, "problem": f"problem {i}"}
+               for i in bad]
+            + [{"id": i, "grammar_ok": True, "translation_ok": True, "single_answer_ok": False, "problem": f"two answers {i}"}
+               for i in single_bad]}
 
 
 def script(monkeypatch, *answers):
@@ -44,7 +49,7 @@ def script(monkeypatch, *answers):
 async def test_a_fixed_sentence_and_its_translation_come_back(monkeypatch):
     calls = script(monkeypatch, drafts(a=(GOOD, KO)), verdict(ok=["a"]))
     out = await gemini_service.prepare_grammar_cards([ITEM])
-    assert out == {"cards": {"a": {"sentence": GOOD, "translation": KO}}, "rejected": {}}
+    assert out == {"cards": {"a": {"sentence": GOOD, "translation": KO, "distractors": D}}, "rejected": {}}
     assert len(calls) == 2
     assert all(c["model"] == settings.CLAUDE_CARD_MODEL for c in calls)
     assert "accidents" in calls[0]["prompt"] and ITEM["sentence"] in calls[0]["prompt"]
@@ -94,7 +99,8 @@ async def test_a_retry_that_passes_is_accepted_and_only_failing_items_are_resent
 
 @pytest.mark.anyio
 async def test_the_checker_may_answer_with_a_bare_list(monkeypatch):
-    script(monkeypatch, drafts(a=(GOOD, KO)), [{"id": "a", "grammar_ok": True, "translation_ok": True}])
+    script(monkeypatch, drafts(a=(GOOD, KO)),
+           [{"id": "a", "grammar_ok": True, "translation_ok": True, "single_answer_ok": True}])
     assert (await gemini_service.prepare_grammar_cards([ITEM]))["cards"]["a"]["sentence"] == GOOD
 
 
@@ -133,7 +139,7 @@ async def test_endpoint(client, monkeypatch):
     script(monkeypatch, drafts(a=(GOOD, KO)), verdict(ok=["a"]))
     res = await client.post("/api/anki/prepare-grammar-cards", json={"items": [ITEM]})
     assert res.status_code == 200
-    assert res.json() == {"cards": {"a": {"sentence": GOOD, "translation": KO}}, "rejected": {}}
+    assert res.json() == {"cards": {"a": {"sentence": GOOD, "translation": KO, "distractors": D}}, "rejected": {}}
 
 
 @pytest.mark.anyio
@@ -170,3 +176,47 @@ def test_the_prepared_translation_is_sent_to_the_gateway(gateway):
 def test_without_a_translation_the_gateway_writes_its_own(gateway):
     anki_service.add_grammar_card(GrammarCardRequest(sentence=GOOD, answer="accidents", mistake="accident"))
     assert not gateway[0].get("translation")
+
+
+# ---------- wrong options come from Sonnet too, and only one option may fit the blank (2026-11-24) ----------
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("bad", [
+    [],                                   # none
+    ["an accident"],                      # only one
+    ["an accident", "an accident"],       # the same twice
+    ["an accident", "Accidents"],         # the answer itself
+    ["an accident", "accident"],          # my mistake again
+    ["an accident", "  "],                # blank
+])
+async def test_wrong_options_must_be_two_new_distinct_ones(monkeypatch, bad):
+    calls = script(monkeypatch, drafts(distractors=bad, a=(GOOD, KO)), drafts(distractors=bad, a=(GOOD, KO)))
+    out = await gemini_service.prepare_grammar_cards([ITEM])
+    assert out["cards"] == {} and "a" in out["rejected"]
+    assert len(calls) == 2           # nothing reached the checker
+
+
+@pytest.mark.anyio
+async def test_the_writer_is_asked_for_wrong_options(monkeypatch):
+    calls = script(monkeypatch, drafts(a=(GOOD, KO)), verdict(ok=["a"]))
+    await gemini_service.prepare_grammar_cards([ITEM])
+    assert "distractors" in calls[0]["prompt"]
+
+
+@pytest.mark.anyio
+async def test_the_checker_sees_every_option_and_refuses_a_second_answer(monkeypatch):
+    calls = script(monkeypatch, drafts(a=(GOOD, KO)), verdict(single_bad=["a"]),
+                   drafts(a=(GOOD, KO)), verdict(single_bad=["a"]))
+    out = await gemini_service.prepare_grammar_cards([ITEM])
+    assert out == {"cards": {}, "rejected": {"a": "two answers a"}}
+    check = calls[1]["prompt"]
+    assert "single_answer_ok" in check
+    for option in ["accidents", "accident", *D]:
+        assert option in check
+
+
+@pytest.mark.anyio
+async def test_a_missing_single_answer_verdict_is_not_a_pass(monkeypatch):
+    v = {"items": [{"id": "a", "grammar_ok": True, "translation_ok": True}]}
+    script(monkeypatch, drafts(a=(GOOD, KO)), v, drafts(a=(GOOD, KO)), v)
+    assert (await gemini_service.prepare_grammar_cards([ITEM]))["cards"] == {}

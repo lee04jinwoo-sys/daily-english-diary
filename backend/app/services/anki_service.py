@@ -156,7 +156,8 @@ class AnkiService:
         mistake = req.mistake.strip()
         tags = tuple(t for t in (f"{ESSAY_TAG}{req.essay_id}" if req.essay_id else "",
                                  f"{FIX_TAG}{req.fix_id}" if req.fix_id else "") if t)
-        payload = {"sentence": sentence, "answer": answer, "distractors": [mistake] if mistake else []}
+        distractors = [d.strip() for d in ([mistake] + list(req.distractors)) if d and d.strip()]
+        payload = {"sentence": sentence, "answer": answer, "distractors": distractors}
         if req.translation.strip():
             payload["translation"] = req.translation.strip()  # checked in prepare_grammar_cards
         return self._gateway_add("grammar", payload, extra_tags=tags)

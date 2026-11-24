@@ -37,6 +37,8 @@ export interface GrammarCardDraft {
   fixId?: string;
   /** Korean translation checked against the sentence (prepare-grammar-cards); sent as the card's 해설. */
   translation?: string;
+  /** Two wrong options written and checked by Sonnet (prepare-grammar-cards); sent after my mistake. */
+  distractors?: string[];
 }
 
 const isWord = (c: string | undefined) => !!c && /[A-Za-z0-9']/.test(c);

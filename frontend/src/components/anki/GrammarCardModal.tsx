@@ -20,8 +20,8 @@ const inputCls =
 
 /**
  * English Grammar multiple-choice card: the answer is blanked on the front and my own
- * mistake is one of the wrong options. Anki Manager fills the translation, the explanation
- * and the other two options under its card rules.
+ * mistake is one of the wrong options. Sonnet writes the translation and the other two options,
+ * and checks that only the answer fits the blank; Anki Manager fills the explanation.
  */
 export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClose, ankiStatus, onCardAdded, essayId, onRegistered }) => {
   const [sentence, setSentence] = useState('');
@@ -30,12 +30,14 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
   const [translation, setTranslation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  // The sentence that passed the grammar + translation check (Sonnet); a changed sentence is checked again.
-  const [checkedSentence, setCheckedSentence] = useState<string | null>(null);
+  // The sentence, answer and mistake that passed the check (Sonnet); changing any of them checks again,
+  // because the wrong options were written for them.
+  const [checkedKey, setCheckedKey] = useState<string | null>(null);
+  const [distractors, setDistractors] = useState<string[]>([]);
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'ok' | 'failed'>('idle');
   const [checkNote, setCheckNote] = useState('');
 
-  const runCheck = async (s: string, a: string, m: string): Promise<{ sentence: string; translation: string } | null> => {
+  const runCheck = async (s: string, a: string, m: string): Promise<{ sentence: string; translation: string; distractors: string[] } | null> => {
     setCheckState('checking');
     try {
       const res = await api.prepareGrammarCards([{ id: '0', sentence: s, answer: a, mistake: m }]);
@@ -43,7 +45,8 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
       if (card) {
         setSentence(card.sentence);
         setTranslation(card.translation);
-        setCheckedSentence(card.sentence);
+        setDistractors(card.distractors);
+        setCheckedKey(`${card.sentence}\n${a}\n${m}`);
         setCheckState('ok');
         setCheckNote(card.sentence !== s ? '문장의 오류를 고쳤습니다.' : '');
         return card;
@@ -63,7 +66,8 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
     setAnswer(draft.answer);
     setMistake(draft.mistake);
     setTranslation('');
-    setCheckedSentence(null);
+    setCheckedKey(null);
+    setDistractors([]);
     setCheckNote('');
     setErrorMsg(null);
     runCheck(draft.sentence, draft.answer, draft.mistake);
@@ -88,8 +92,8 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
     setErrorMsg(null);
     try {
       // only a checked sentence goes to Anki; an edited sentence is checked again first
-      let final = { sentence: sentence.trim(), translation: translation.trim() };
-      if (checkedSentence !== final.sentence || !final.translation) {
+      let final = { sentence: sentence.trim(), translation: translation.trim(), distractors };
+      if (checkedKey !== `${final.sentence}\n${answer.trim()}\n${mistake.trim()}` || !final.translation) {
         const card = await runCheck(final.sentence, answer.trim(), mistake.trim());
         if (!card) {
           setErrorMsg('문장·해설 검사를 통과하지 못해 등록하지 않았습니다. 문장을 고친 뒤 다시 시도하세요.');
@@ -99,7 +103,7 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
       }
       const res = await api.addGrammarCard({
         sentence: final.sentence, answer: answer.trim(), mistake: mistake.trim(),
-        essay_id: essayId, fix_id: draft.fixId, translation: final.translation,
+        essay_id: essayId, fix_id: draft.fixId, translation: final.translation, distractors: final.distractors,
       });
       if (res.success) {
         if (draft.fixId) onRegistered?.(draft.fixId);
@@ -124,7 +128,7 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
             <div>
               <h3 className="text-sm font-bold text-stone-900 dark:text-[#f0f0f0]">문법 카드 등록</h3>
               <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                내가 쓴 틀린 형태가 오답 보기로 들어갑니다. 해설·설명·나머지 보기는 Anki Manager가 채웁니다.
+                내가 쓴 틀린 형태가 오답 보기로 들어갑니다. 나머지 보기 2개는 검사 때 함께 만들어집니다.
               </p>
             </div>
           </div>

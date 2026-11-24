@@ -25,6 +25,7 @@ class GrammarCardRequest(BaseModel):
     essay_id: Optional[str] = Field(default=None, description="Essay the card comes from; becomes a tag")
     fix_id: Optional[str] = Field(default=None, description="Correction the card tests; becomes a tag")
     translation: str = Field(default="", description="Checked Korean translation; empty lets Anki Manager write one")
+    distractors: List[str] = Field(default_factory=list, description="Checked wrong options (Sonnet), sent after my mistake")
 
     @field_validator("essay_id", "fix_id")
     @classmethod
@@ -73,6 +74,7 @@ class PrepareGrammarCardsRequest(BaseModel):
 class PreparedCard(BaseModel):
     sentence: str
     translation: str
+    distractors: List[str] = Field(default_factory=list)
 
 class PrepareGrammarCardsResponse(BaseModel):
     cards: Dict[str, PreparedCard]
