@@ -1,0 +1,24 @@
+[Unit]
+Description=Daily English Diary backend + built frontend (127.0.0.1:8000, open via SSH tunnel)
+Wants=diary-gec.service anki.service
+After=network-online.target diary-gec.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/daily-english-diary/backend
+# backend/.env holds API keys; the values below win over it (load_dotenv does not override)
+Environment=HOST=127.0.0.1
+Environment=PORT=8000
+Environment=ANKI_URL=http://127.0.0.1:8765
+Environment=ANKI_GATEWAY_URL=http://127.0.0.1:8001
+Environment=GEC_URL=http://127.0.0.1:8010
+# `claude -p` (review, card check) lives in ~/.local/bin
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/ubuntu/daily-english-diary/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=10
+MemoryMax=1500M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

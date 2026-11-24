@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily English Diary GECToR detector (127.0.0.1:8010)
+After=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/daily-english-diary/gec
+ExecStart=/home/ubuntu/daily-english-diary/gec/.venv/bin/python server.py
+Restart=on-failure
+RestartSec=10
+MemoryMax=2G
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
