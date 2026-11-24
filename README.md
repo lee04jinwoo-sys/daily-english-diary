@@ -26,8 +26,17 @@ B2~C1 학습자를 위한 영어 **논증 에세이** 연습 앱입니다. 원�
 
 ## 🚀 빠른 시작 (Quick Start)
 
+
+## 서버 실행 (기본, 2026-11-24부터)
+
+- diary는 Oracle 서버(`oracle-main`)에서 상시 실행된다: `diary`(백엔드 + 빌드된 화면, 127.0.0.1:8000), `diary-gec`(GECToR, 127.0.0.1:8010).
+- Mac에서는 `http://localhost:8020` (SSH 터널 `com.jinwoo.anki-tunnel`). `DailyEnglishEssay.command`가 이 주소를 연다.
+- 배포: `deploy/deploy.sh` (커밋된 상태만, 테스트 → 빌드 → 전송 → 재시작). `data/`와 `backend/.env`는 서버가 원본이고 배포로 보내지 않는다.
+- 리뷰와 카드 검사는 서버의 `claude -p`를 쓴다 (서버에서 한 번 `claude` 로그인 필요).
+- 아래 `./start.sh`는 로컬 개발용이다. Mac의 `data/`는 더 이상 원본이 아니다.
+
 ### 1) 원클릭 실행 스크립트
-터미널에서 아래 명령을 실행하거나, Finder에서 `DailyEnglishEssay.command`를 더블클릭합니다:
+로컬 개발용 (터미널에서 실행):
 ```bash
 cd ~/Desktop/Projects/daily-english-diary
 ./start.sh
