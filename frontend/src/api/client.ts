@@ -83,10 +83,12 @@ export const api = {
     data: { essay_id: string; content: string },
     onPart: (part: ReviewPart, payload: any) => void,
   ): Promise<ReviewResponse> => {
+    const controller = new AbortController();
     const res = await fetch(`${API_BASE}/review/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      signal: controller.signal,
     });
     if (!res.ok || !res.body) {
       let errorMsg = `HTTP error ${res.status}`;
@@ -102,20 +104,41 @@ export const api = {
     const decoder = new TextDecoder();
     let buffer = '';
     let review: ReviewResponse | null = null;
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newline;
-      while ((newline = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (!line) continue;
-        const msg = JSON.parse(line);
-        if (msg.event === 'error') throw new Error(msg.detail);
-        if (msg.event === 'done') review = msg.data;
-        else onPart(msg.event as ReviewPart, msg.data);
+    const CHUNK_TIMEOUT_MS = 150000; // the Claude CLI review takes ~100s in total
+
+    const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+      let timer: any;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('첨삭 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.'));
+        }, CHUNK_TIMEOUT_MS);
+      });
+      try {
+        return await Promise.race([reader.read(), timeoutPromise]);
+      } finally {
+        clearTimeout(timer);
       }
+    };
+
+    try {
+      for (;;) {
+        const { value, done } = await readWithTimeout();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (!line) continue;
+          const msg = JSON.parse(line);
+          if (msg.event === 'error') throw new Error(msg.detail);
+          if (msg.event === 'done') review = msg.data;
+          else onPart(msg.event as ReviewPart, msg.data);
+        }
+      }
+    } finally {
+      reader.releaseLock();
     }
     if (!review) throw new Error('첨삭 응답이 중간에 끊겼습니다. 다시 시도해주세요.');
     return review;

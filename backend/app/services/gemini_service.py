@@ -268,7 +268,13 @@ class GeminiService:
         if self._client is None:
             if not settings.GEMINI_API_KEY:
                 raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.")
-            self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            self._client = genai.Client(
+                api_key=settings.GEMINI_API_KEY,
+                http_options=types.HttpOptions(
+                    timeout=60000,  # 60 seconds (in milliseconds)
+                    retry_options=types.HttpRetryOptions(attempts=2, initial_delay=1.0, max_delay=3.0),
+                ),
+            )
         return self._client
 
     async def _generate_json_cli(self, prompt: str, label: str, essay_id: str) -> dict:
@@ -308,15 +314,24 @@ class GeminiService:
             return await self._generate_json_cli(prompt, label, essay_id)
         for attempt in range(2):
             started = time.monotonic()
-            response = await self.client.aio.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=temperature,
-                    thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget)
+            try:
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=settings.GEMINI_MODEL,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=temperature,
+                            thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+                        ),
+                    ),
+                    timeout=65.0,
                 )
-            )
+            except asyncio.TimeoutError as err:
+                logger.error(f"Gemini API timed out after 65s for label={label}, attempt={attempt + 1}")
+                if attempt == 1:
+                    raise GeminiError(f"AI 모델 응답 시간 초과 ({label})") from err
+                continue
             if label:
                 usage = getattr(response, "usage_metadata", None)
                 record_metric({
@@ -920,6 +935,7 @@ JSON 응답 규격:
             logger.error(f"Similar sentence check error: {e}", exc_info=True)
             raise GeminiError(str(e)) from e
         return [str(r["id"]) for r in self._rows(data) if r.get("ok") is True and str(r.get("id")) in candidates]
+
     async def prepare_grammar_cards(self, items: List[dict]) -> dict:
         """Make grammar cards right before they are added (Claude CLI, CLAUDE_CARD_MODEL = Sonnet).
 

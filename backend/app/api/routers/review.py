@@ -59,7 +59,8 @@ async def review_essay_stream(req: ReviewRequest):
                 if event == "done":
                     await essay_service.save_review(essay.id, req.content, data)
                 yield json.dumps({"event": event, "data": jsonable_encoder(data)}, ensure_ascii=False) + "\n"
-        except GeminiError as e:
+        except Exception as e:
+            logger.error(f"Stream error in review: {e}", exc_info=True)
             detail = f"AI 첨삭에 실패했습니다. 잠시 후 다시 시도해주세요: {e}"
             yield json.dumps({"event": "error", "detail": detail}, ensure_ascii=False) + "\n"
 
