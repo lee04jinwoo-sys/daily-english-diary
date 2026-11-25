@@ -43,6 +43,10 @@ class Settings(BaseModel):
     # subscription; "gemini" sends it to the paid Gemini key instead. Band scores of the two are not comparable.
     REVIEW_BACKEND: str = Field(default_factory=lambda: os.getenv("REVIEW_BACKEND", "claude_cli"))
     CLAUDE_REVIEW_MODEL: str = Field(default_factory=lambda: os.getenv("CLAUDE_REVIEW_MODEL", "claude-haiku-5-5"))
+    # Review labels sent to the paid Gemini key at temperature 0 instead of the CLI (e.g. "detect,verify"):
+    # the CLI cannot fix the temperature, so the same essay gets a different error count on each run. Empty = off.
+    GEMINI_REVIEW_LABELS: set = Field(default_factory=lambda: {
+        x.strip() for x in os.getenv("GEMINI_REVIEW_LABELS", "").split(",") if x.strip()})
     # Second error detector (local GECToR server, ../gec/server.py); off or unreachable = review without it
     GEC_ENABLED: bool = Field(default_factory=lambda: os.getenv("GEC_ENABLED", "1") != "0")
     GEC_URL: str = Field(default_factory=lambda: os.getenv("GEC_URL", "http://127.0.0.1:8010"))
