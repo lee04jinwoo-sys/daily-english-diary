@@ -219,7 +219,7 @@ export function App() {
       await refreshLists();
 
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.7 } });
-      showToast(`첨삭 완료 · Band ${res.rubric.overall_band.toFixed(1)}`);
+      showToast(res.metrics ? `첨삭 완료 · 100단어당 오류 ${res.metrics.errors_per_100.toFixed(1)}` : '첨삭 완료');
     } catch (e: any) {
       setPendingParts([]);
       // A failed review is not saved: go back to what the essay had before.
@@ -300,8 +300,8 @@ export function App() {
     setAnkiModal({ isOpen: true, cardType, text, context });
   };
 
-  const previousBand = currentEssay?.revision_of
-    ? essays.find((e) => e.id === currentEssay.revision_of)?.overall_band ?? null
+  const previousErrors = currentEssay?.revision_of
+    ? essays.find((e) => e.id === currentEssay.revision_of)?.metrics?.errors_per_100 ?? null
     : null;
 
   return (
@@ -348,7 +348,7 @@ export function App() {
             onPromptChange={handlePromptChange}
             onDateChange={handleDateChange}
             onRevise={handleRevise}
-            previousBand={previousBand}
+            previousErrors={previousErrors}
             content={content}
             onContentChange={handleContentChange}
             onReview={handleReview}
@@ -409,8 +409,6 @@ export function App() {
   );
 }
 
-const EMPTY_SCORE = { band: 0, comment: '', spread: 0 };
-
 function emptyReview(essayId: string, content: string): ReviewResponse {
   return {
     essay_id: essayId,
@@ -418,7 +416,7 @@ function emptyReview(essayId: string, content: string): ReviewResponse {
     corrected_text: content,
     upgraded_text: '',
     overall_feedback: '',
-    rubric: { task_response: EMPTY_SCORE, coherence: EMPTY_SCORE, lexical: EMPTY_SCORE, grammar: EMPTY_SCORE, overall_band: 0 },
+    metrics: null,
     argument: { thesis: '', strongest_point: '', weakest_point: '', missing_counterargument: '', paragraph_comments: [] },
     revision_focus: [],
     recurring_patterns: [],
@@ -430,9 +428,6 @@ function emptyReview(essayId: string, content: string): ReviewResponse {
 
 function mergeReviewPart(review: ReviewResponse, part: ReviewPart, data: any): ReviewResponse {
   switch (part) {
-    case 'content_scores':
-    case 'language_scores':
-      return { ...review, rubric: { ...review.rubric, ...data } };
     case 'feedback':
     case 'corrections':
       return { ...review, ...data };

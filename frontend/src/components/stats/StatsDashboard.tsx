@@ -5,7 +5,6 @@ import { CoreMetricsChart } from './CoreMetricsChart';
 import { VolumeChart } from './VolumeChart';
 import { ErrorCategoryChart } from './ErrorCategoryChart';
 import { ActivityHeatmap } from './ActivityHeatmap';
-import { BandTrendChart } from './BandTrendChart';
 import { WritingTrendChart } from './WritingTrendChart';
 import { 
   BarChart2, 
@@ -28,7 +27,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
   const [period, setPeriod] = useState<'all' | 'last10' | 'last5'>('all');
 
   const lastNumber = useMemo(
-    () => Math.max(0, ...[...(stats?.essay_trends || []), ...(stats?.band_trends || []), ...(stats?.writing_trends || [])].map((t) => t.number)),
+    () => Math.max(0, ...[...(stats?.essay_trends || []), ...(stats?.writing_trends || [])].map((t) => t.number)),
     [stats],
   );
   const inPeriod = (number: number) =>
@@ -48,7 +47,7 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
             <span>학습 분석 & 객관적 성장 지표</span>
           </h1>
           <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
-            에세이별 Band 추이, 100단어당 교정 밀도, 작성 볼륨을 추적합니다.
+            100단어당 문법 오류, 오류 없는 문장 비율, 작성 볼륨을 에세이별로 추적합니다.
           </p>
         </div>
 
@@ -109,12 +108,6 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({
         {/* GitHub Consistency Heatmap */}
         <ActivityHeatmap dailyActivity={stats?.daily_activity || {}} />
       </div>
-
-      <BandTrendChart
-        data={(stats?.band_trends || []).filter((b) => inPeriod(b.number))}
-        typeBands={stats?.type_bands || {}}
-        avgBand={stats?.avg_band ?? null}
-      />
 
       <WritingTrendChart
         data={(stats?.writing_trends || []).filter((w) => inPeriod(w.number))}

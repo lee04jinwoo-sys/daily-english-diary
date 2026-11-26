@@ -47,7 +47,7 @@ async def review_essay(req: ReviewRequest):
 @router.post("/stream")
 async def review_essay_stream(req: ReviewRequest):
     """Same review, sent as NDJSON lines as each part finishes:
-    {"event": "content_scores" | "feedback" | "corrections" | "language_scores", "data": ...},
+    {"event": "feedback" | "corrections", "data": ...} (corrections carries the grammar numbers),
     then {"event": "done", "data": review} after it is saved, or {"event": "error", "detail": ...}.
     """
     essay = await _essay_for(req)

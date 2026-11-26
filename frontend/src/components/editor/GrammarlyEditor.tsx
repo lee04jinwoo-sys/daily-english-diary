@@ -30,7 +30,7 @@ interface GrammarlyEditorProps {
   onPromptChange: (prompt: string) => void;
   onDateChange: (date: string) => void;
   onRevise: () => void;
-  previousBand?: number | null;
+  previousErrors?: number | null; // accuracy errors per 100 words of the essay this rewrites
   content: string;
   onContentChange: (content: string) => void;
   onReview: () => void;
@@ -52,7 +52,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
   onPromptChange,
   onDateChange,
   onRevise,
-  previousBand,
+  previousErrors,
   content,
   onContentChange,
   onReview,
@@ -489,7 +489,7 @@ export const GrammarlyEditor: React.FC<GrammarlyEditorProps> = ({
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Scrollable Paper Page Container */}
           <div className="flex-1 overflow-y-auto px-10 py-6 max-w-3xl mx-auto w-full space-y-5 pb-20">
-            <EssayPromptHeader essay={essay} onPromptChange={onPromptChange} onDateChange={onDateChange} previousBand={previousBand} />
+            <EssayPromptHeader essay={essay} onPromptChange={onPromptChange} onDateChange={onDateChange} previousErrors={previousErrors} />
 
             {/* Editor Canvas Box */}
             <div className="w-full bg-white dark:bg-[#222222] rounded-2xl border border-[#e9e8e4] dark:border-[#333333] shadow-xs p-6 flex flex-col transition-colors">

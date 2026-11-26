@@ -1,7 +1,7 @@
 """Stats trends follow the order essays were written, not calendar dates.
 
 - Every essay with text gets a number (1, 2, 3 ...) in creation order; the same number is used
-  in essay_trends, band_trends and writing_trends.
+  in essay_trends and writing_trends.
 - Two essays written on the same day are two points, not one merged day.
 - Averages are over essays.
 """
@@ -43,6 +43,5 @@ async def test_trends_are_per_essay_and_numbered_in_writing_order(client, monkey
     assert [x["word_count"] for x in t] == [100, 200]
     assert [x["error_density"] for x in t] == [10.0, 1.0]
     assert t[0]["date"] == t[1]["date"]                                 # same day, still two points
-    assert [b["number"] for b in s["band_trends"]] == [1, 3]
     assert [w["number"] for w in s["writing_trends"]] == [1, 3]
     assert s["avg_error_density"] == 5.5                                # mean over essays

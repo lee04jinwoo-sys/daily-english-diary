@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { EssayListItem, ESSAY_TYPE_LABELS } from '../../types/essay';
-import { CRITERIA, bandDelta, weakestCriteria, wordsPerMinute } from '../../utils/essaySummary';
+import { errorDelta, wordsPerMinute } from '../../utils/essaySummary';
 import {
   Search,
   Trash2,
@@ -68,8 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ) : (
           filteredEssays.map((essay) => {
             const isSelected = essay.id === currentEssayId;
-            const delta = bandDelta(essay, essays);
-            const weakest = weakestCriteria(essay.bands);
+            const delta = errorDelta(essay, essays);
             const wpm = wordsPerMinute(essay.word_count, essay.writing_seconds);
             return (
               <div
@@ -97,15 +96,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </div>
                   <div className="flex items-center space-x-1">
-                    {essay.overall_band != null ? (
+                    {essay.metrics ? (
                       <span className="inline-flex items-center space-x-1 text-[10px] tabular-nums text-stone-400 dark:text-stone-500">
-                        <span title="AI 추정 점수 (참고용)">{essay.overall_band.toFixed(1)}</span>
+                        <span title="100단어당 문법 오류">오류 {essay.metrics.errors_per_100.toFixed(1)}</span>
                         {delta != null && delta !== 0 && (
                           <span
-                            className={delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}
-                            title={essay.revision_of ? '원본 대비' : '직전 첨삭 대비'}
+                            className={delta < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}
+                            title={essay.revision_of ? '원본 대비 (100단어당 오류)' : '직전 첨삭 대비 (100단어당 오류)'}
                           >
-                            {delta > 0 ? '▲' : '▼'}
+                            {delta < 0 ? '▼' : '▲'}
                             {Math.abs(delta).toFixed(1)}
                           </span>
                         )}
@@ -134,16 +133,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {essay.prompt}
                 </div>
 
-                {essay.bands && (
-                  <div className="flex items-center gap-x-2 mt-1.5 text-[10px] tabular-nums" title="과제 달성도 · 일관성 · 어휘 · 문법 (가장 낮은 항목은 빨간색)">
-                    {CRITERIA.map((c) => (
-                      <span
-                        key={c.key}
-                        className={weakest.includes(c.key) ? 'text-rose-500 dark:text-rose-400 font-semibold' : 'text-stone-500 dark:text-stone-400'}
-                      >
-                        {c.label} {essay.bands![c.key].toFixed(1)}
-                      </span>
-                    ))}
+                {essay.metrics && (
+                  <div className="flex items-center gap-x-2 mt-1.5 text-[10px] tabular-nums text-stone-500 dark:text-stone-400">
+                    <span title="검증된 교정 기준">오류 없는 문장 {essay.metrics.clean_sentence_pct}%</span>
+                    {essay.metrics.awkward > 0 && <span title="참고용">어색한 표현 {essay.metrics.awkward}</span>}
                   </div>
                 )}
 

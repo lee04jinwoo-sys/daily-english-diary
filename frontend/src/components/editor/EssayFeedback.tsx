@@ -11,25 +11,15 @@ interface EssayFeedbackProps {
   onOpenGrammarModal: (draft: GrammarCardDraft) => void;
 }
 
-const CRITERIA: Array<{ key: 'task_response' | 'coherence' | 'lexical' | 'grammar'; label: string; short: string; part: ReviewPart }> = [
-  { key: 'task_response', label: '과제 수행', short: '과제', part: 'content_scores' },
-  { key: 'coherence', label: '구성·흐름', short: '흐름', part: 'content_scores' },
-  { key: 'lexical', label: '어휘', short: '어휘', part: 'language_scores' },
-  { key: 'grammar', label: '문법 범위·정확성', short: '문법', part: 'language_scores' },
-];
-
 const PART_LABELS: Record<ReviewPart, string> = {
-  content_scores: '내용 점수',
   feedback: '총평·내용 피드백',
-  corrections: '교정',
-  language_scores: '문법·어휘 점수',
+  corrections: '교정·문법 수치',
 };
 
 export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingParts = [], onRevise, onOpenAnkiModal, onOpenGrammarModal }) => {
-  const { rubric, argument } = review;
+  const { argument } = review;
   const isPending = (part: ReviewPart) => pendingParts.includes(part);
-  const scoresPending = isPending('content_scores') || isPending('language_scores');
-  const bandText = (c: (typeof CRITERIA)[number]) => (isPending(c.part) ? '…' : rubric[c.key].band.toFixed(1));
+  const metrics = isPending('corrections') ? null : review.metrics ?? null;
   const patterns = review.recurring_patterns || [];
 
   // Card front = the learner's own sentence, corrected; falls back to the fix itself.
@@ -55,6 +45,45 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingPar
           <span>아직 오는 중: {pendingParts.map((p) => PART_LABELS[p]).join(' · ')}</span>
         </div>
       )}
+
+      {/* Grammar numbers, counted from the verified corrections */}
+      <div className="bg-white dark:bg-[#222222] rounded-xl border border-stone-200 dark:border-[#333333] shadow-xs p-4">
+        <div className="flex items-center space-x-1.5 text-xs text-stone-500 dark:text-stone-400 mb-3">
+          <Scale className="w-3.5 h-3.5" />
+          <span>문법 (검증된 교정 기준)</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
+            <div className="text-[11px] text-stone-500 dark:text-stone-400">100단어당 오류</div>
+            <div className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-100 mt-1">
+              {metrics ? metrics.errors_per_100.toFixed(1) : '…'}
+            </div>
+            {metrics && (
+              <div className="text-[10px] text-stone-400 dark:text-stone-500 mt-1 tabular-nums">
+                {metrics.accuracy_errors}개 / {metrics.words}단어
+              </div>
+            )}
+          </div>
+          <div className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
+            <div className="text-[11px] text-stone-500 dark:text-stone-400">오류 없는 문장</div>
+            <div className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-100 mt-1">
+              {metrics ? `${metrics.clean_sentence_pct}%` : '…'}
+            </div>
+            {metrics && (
+              <div className="text-[10px] text-stone-400 dark:text-stone-500 mt-1 tabular-nums">
+                {metrics.clean_sentences} / {metrics.sentences}문장
+              </div>
+            )}
+          </div>
+          <div className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
+            <div className="text-[11px] text-stone-500 dark:text-stone-400">어색한 표현</div>
+            <div className="text-xl font-bold tabular-nums text-stone-500 dark:text-stone-400 mt-1">
+              {metrics ? metrics.awkward : '…'}
+            </div>
+            <div className="text-[10px] text-stone-400 dark:text-stone-500 mt-1">참고 (수치에 안 넣음)</div>
+          </div>
+        </div>
+      </div>
 
       {/* Overall feedback */}
       {review.overall_feedback && (
@@ -168,38 +197,6 @@ export const EssayFeedback: React.FC<EssayFeedbackProps> = ({ review, pendingPar
           )}
         </div>
       )}
-
-      {/* Scores: reference only, collapsed */}
-      <details className="group bg-white dark:bg-[#222222] rounded-xl border border-stone-200 dark:border-[#333333] shadow-xs">
-        <summary className="cursor-pointer list-none p-4 flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
-          <span className="flex items-center space-x-1.5">
-            <Scale className="w-3.5 h-3.5" />
-            <span>점수 (참고용, AI 추정)</span>
-          </span>
-          <span className="tabular-nums">
-            종합 {scoresPending ? '…' : rubric.overall_band.toFixed(1)} ·{' '}
-            {CRITERIA.map((c) => `${c.short} ${bandText(c)}`).join(' · ')}
-            <span className="ml-2 group-open:hidden">▾</span>
-            <span className="ml-2 hidden group-open:inline">▴</span>
-          </span>
-        </summary>
-        <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {CRITERIA.map((c) => (
-            <div key={c.key} className="bg-[#faf9f6] dark:bg-[#1a1a1a] border border-[#ebe9e1] dark:border-[#333333] rounded-lg p-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-stone-700 dark:text-stone-300">{c.label}</span>
-                <span className="font-bold tabular-nums text-stone-900 dark:text-stone-100">{bandText(c)}</span>
-              </div>
-              {!isPending(c.part) && rubric[c.key].comment && (
-                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-2 leading-relaxed">{rubric[c.key].comment}</p>
-              )}
-              {!isPending(c.part) && (rubric[c.key].spread ?? 0) > 0 && (
-                <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-1">3회 채점 차이 {rubric[c.key].spread!.toFixed(1)}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </details>
     </div>
   );
 };

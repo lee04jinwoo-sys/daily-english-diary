@@ -9,9 +9,10 @@ import aiosqlite
 
 from app.core.config import settings
 from app.schemas.stats import (
-    BandTrendItem, DailyActivity, EssayTrendItem, MistakeSample, StatsResponse, WritingTrendItem,
+    DailyActivity, EssayTrendItem, MistakeSample, StatsResponse, WritingTrendItem,
 )
 from app.services.essay_service import current_streak
+from app.services.grammar_metrics import grammar_metrics
 
 
 def _avg(xs: List[float], digits: int = 2) -> float:
@@ -114,9 +115,7 @@ class StatsService:
         # Trends follow writing order: one point per reviewed essay, numbered among essays with text.
         numbers = essay_numbers(essays)
         activity: Dict[str, DailyActivity] = {}
-        band_trends: List[BandTrendItem] = []
         essay_trends: List[EssayTrendItem] = []
-        type_band_lists: Dict[str, List[float]] = defaultdict(list)
         total_words = total_sentences = 0
 
         for e in essays:
@@ -131,17 +130,11 @@ class StatsService:
             if not e["review_json"]:
                 continue
             review = json.loads(e["review_json"])
-            rubric = review["rubric"]
-            band = rubric["overall_band"]
-            act.best_band = max(band, act.best_band or 0)
-            type_band_lists[e["essay_type"]].append(band)
-            band_trends.append(BandTrendItem(
-                essay_id=e["id"], number=numbers[e["id"]], date=date, essay_type=e["essay_type"],
-                revision_of=e["revision_of"], overall_band=band,
-                **{k: rubric[k]["band"] for k in ("task_response", "coherence", "lexical", "grammar")},
-            ))
-
             original = review.get("original_text") or e["content"]
+            metrics = grammar_metrics(original, review.get("suggestions") or [])
+            act.reviewed = True
+            if act.best_errors_per_100 is None or metrics.errors_per_100 < act.best_errors_per_100:
+                act.best_errors_per_100 = metrics.errors_per_100
             sents = _sentence_count(original)
             total_sentences += sents
             t = tier_counts[e["id"]]
@@ -156,6 +149,7 @@ class StatsService:
                 idiom_density=round(t.get("idiom", 0) / words * 100, 2),
                 style_density=round(t.get("style", 0) / words * 100, 2),
                 nci=round(nci, 1),
+                clean_sentence_pct=metrics.clean_sentence_pct,
             ))
 
         written = set(activity)
@@ -171,13 +165,11 @@ class StatsService:
             avg_idiom_density=_avg([d.idiom_density for d in essay_trends]),
             avg_style_density=_avg([d.style_density for d in essay_trends]),
             avg_nci=_avg([d.nci for d in essay_trends], 1),
-            avg_band=_avg([b.overall_band for b in band_trends]) if band_trends else None,
+            avg_clean_sentence_pct=_avg([d.clean_sentence_pct for d in essay_trends], 1) if essay_trends else None,
             category_counts=dict(category_counts),
             top_subcategories=top_subcategories,
             daily_activity=activity,
             essay_trends=essay_trends,
-            band_trends=band_trends,
-            type_bands={k: _avg(v) for k, v in type_band_lists.items()},
             writing_trends=_writing_trends(essays, tier_counts, numbers),
         )
 

@@ -1,5 +1,5 @@
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 SuggestionCategory = Literal[
     "Grammar",
@@ -58,6 +58,17 @@ class CriterionScore(BaseModel):
     spread: float = Field(default=0.0, description="Max minus min band across the scoring runs")
 
 
+class GrammarMetrics(BaseModel):
+    """Counted from the verified corrections (app/services/grammar_metrics.py)."""
+    words: int = 0
+    sentences: int = 0
+    accuracy_errors: int = 0
+    errors_per_100: float = Field(default=0.0, description="Accuracy errors per 100 words, one decimal")
+    clean_sentences: int = 0
+    clean_sentence_pct: int = Field(default=0, description="Share of sentences without an accuracy error (%)")
+    awkward: int = Field(default=0, description="Idiom and style notes; reference only")
+
+
 class EssayRubric(BaseModel):
     task_response: CriterionScore
     coherence: CriterionScore
@@ -93,7 +104,8 @@ class ReviewResponse(BaseModel):
     corrected_text: str = Field(..., description="Minimal grammar/spelling fixes, user's structure kept")
     upgraded_text: str = Field(..., description="Same argument rewritten at C1+ level")
     overall_feedback: str
-    rubric: EssayRubric
+    rubric: Optional[EssayRubric] = Field(default=None, description="Band scores of reviews before 2026-11-26 only")
+    metrics: Optional[GrammarMetrics] = None
     argument: ArgumentFeedback
     revision_focus: List[str] = Field(default_factory=list, description="2-3 things to fix when rewriting")
     recurring_patterns: List[RecurringPattern] = Field(default_factory=list)
@@ -101,3 +113,11 @@ class ReviewResponse(BaseModel):
     sentence_pairs: List[SentencePair] = Field(default_factory=list)
     key_expressions: List[KeyExpression] = Field(default_factory=list)
     suggestions_verified: bool = Field(default=True, description="False when the verification call failed and candidates were kept unverified")
+
+    @model_validator(mode="after")
+    def _count_metrics(self):
+        # Reviews stored before 2026-11-26 have no numbers: count them from their stored corrections.
+        if self.metrics is None:
+            from app.services.grammar_metrics import grammar_metrics
+            self.metrics = grammar_metrics(self.original_text, self.suggestions)
+        return self

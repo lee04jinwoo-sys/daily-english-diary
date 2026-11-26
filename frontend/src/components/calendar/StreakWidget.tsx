@@ -12,7 +12,7 @@ export const StreakWidget: React.FC<StreakWidgetProps> = ({ stats }) => {
   const totalWords = stats?.total_words ?? 0;
   const totalSentences = stats?.total_sentences ?? 0;
   const avgErrorDensity = stats?.avg_error_density ?? 0.0;
-  const avgNci = stats?.avg_nci ?? 85.0;
+  const avgClean = stats?.avg_clean_sentence_pct ?? null;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
@@ -50,20 +50,20 @@ export const StreakWidget: React.FC<StreakWidgetProps> = ({ stats }) => {
         </div>
       </div>
 
-      {/* 3. Native Conformance Index (NCI %) */}
+      {/* 3. Sentences without an accuracy error (%) */}
       <div className="bg-white dark:bg-[#202020] border border-emerald-200/70 dark:border-emerald-900/40 rounded-2xl p-4 shadow-xs flex flex-col justify-between transition-colors">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">교정 없이 유지된 비율 (NCI)</span>
+          <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">오류 없는 문장 비율</span>
           <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
             <Sparkles className="w-4 h-4" />
           </div>
         </div>
         <div className="mt-2.5">
           <div className="flex items-baseline space-x-1">
-            <span className="text-2xl font-extrabold text-stone-900 dark:text-white font-serif">{avgNci}%</span>
-            <span className="text-xs text-stone-500 dark:text-stone-400">일치</span>
+            <span className="text-2xl font-extrabold text-stone-900 dark:text-white font-serif">{avgClean != null ? `${Math.round(avgClean)}%` : '-'}</span>
+            <span className="text-xs text-stone-500 dark:text-stone-400">평균</span>
           </div>
-          <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5">교정 없이 채택된 단어 비율</p>
+          <p className="text-[10px] text-stone-400 dark:text-stone-500 mt-0.5">문법 오류가 하나도 없는 문장의 비율</p>
         </div>
       </div>
 

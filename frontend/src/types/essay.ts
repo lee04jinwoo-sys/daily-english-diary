@@ -87,6 +87,18 @@ export interface CriterionScore {
   spread?: number; // max - min band across the scoring runs
 }
 
+// Counted from the verified corrections; replaces the band scores since 2026-11-26.
+export interface GrammarMetrics {
+  words: number;
+  sentences: number;
+  accuracy_errors: number;
+  errors_per_100: number;
+  clean_sentences: number;
+  clean_sentence_pct: number;
+  awkward: number;
+}
+
+// Band scores of reviews made before 2026-11-26 only.
 export interface EssayRubric {
   task_response: CriterionScore;
   coherence: CriterionScore;
@@ -117,7 +129,8 @@ export interface ReviewResponse {
   corrected_text: string;
   upgraded_text: string;
   overall_feedback: string;
-  rubric: EssayRubric;
+  rubric?: EssayRubric | null;
+  metrics?: GrammarMetrics | null;
   argument: ArgumentFeedback;
   revision_focus: string[];
   recurring_patterns?: RecurringPattern[];
@@ -128,8 +141,8 @@ export interface ReviewResponse {
 }
 
 // Parts of a streamed review, in roughly the order they arrive.
-export type ReviewPart = 'content_scores' | 'feedback' | 'corrections' | 'language_scores';
-export const REVIEW_PARTS: ReviewPart[] = ['content_scores', 'feedback', 'corrections', 'language_scores'];
+export type ReviewPart = 'feedback' | 'corrections';
+export const REVIEW_PARTS: ReviewPart[] = ['feedback', 'corrections'];
 
 export interface Essay {
   id: string;
@@ -160,11 +173,10 @@ export interface EssayListItem {
   revision_of: string | null;
   is_reviewed: boolean;
   is_completed: boolean;
-  overall_band: number | null;
   writing_seconds: number;
   preview: string;
   updated_at: string;
-  bands: Record<'task_response' | 'coherence' | 'lexical' | 'grammar', number> | null;
+  metrics: GrammarMetrics | null;
   correction_count: number;
   grammar_count: number;
 }
@@ -237,20 +249,8 @@ export interface DailyActivity {
   date: string;
   essay_count: number;
   word_count: number;
-  best_band: number | null;
-}
-
-export interface BandTrendItem {
-  essay_id: string;
-  number: number;
-  date: string;
-  essay_type: EssayType;
-  revision_of: string | null;
-  overall_band: number;
-  task_response: number;
-  coherence: number;
-  lexical: number;
-  grammar: number;
+  reviewed: boolean;
+  best_errors_per_100: number | null;
 }
 
 // One reviewed essay; number is its place in writing order among essays with text.
@@ -267,6 +267,7 @@ export interface EssayTrendItem {
   idiom_density?: number;
   style_density?: number;
   nci: number;
+  clean_sentence_pct?: number;
 }
 
 export interface StatsResponse {
@@ -285,9 +286,7 @@ export interface StatsResponse {
   top_subcategories: MistakeSample[];
   daily_activity: Record<string, DailyActivity>;
   essay_trends?: EssayTrendItem[];
-  avg_band: number | null;
-  band_trends: BandTrendItem[];
-  type_bands: Record<string, number>;
+  avg_clean_sentence_pct?: number | null;
   writing_trends?: WritingTrendItem[];
 }
 

@@ -15,6 +15,7 @@ from app.schemas.essay import (
     EssayUpdateRequest,
 )
 from app.schemas.review import ReviewResponse, SuggestionItem
+from app.services.grammar_metrics import grammar_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +113,7 @@ class EssayService:
             await db.execute(
                 """UPDATE essays SET content = ?, word_count = ?, overall_band = ?, review_json = ?, updated_at = ?
                    WHERE id = ?""",
-                (content, _count_words(content), review.rubric.overall_band, review.model_dump_json(),
+                (content, _count_words(content), review.rubric.overall_band if review.rubric else None, review.model_dump_json(),
                  datetime.datetime.now().isoformat(), essay_id),
             )
             await db.commit()
@@ -208,26 +209,22 @@ class EssayService:
         ]
 
 
-_CRITERIA = ("task_response", "coherence", "lexical", "grammar")
-
-
-def _criterion_bands(rubric) -> Optional[dict]:
-    """The four criterion bands, or None unless all four are numbers."""
+def _metrics(review: dict, suggestions: list):
+    text = review.get("original_text")
+    if not isinstance(text, str):
+        return None
     try:
-        bands = {key: rubric[key]["band"] for key in _CRITERIA}
-    except (KeyError, TypeError):
+        return grammar_metrics(text, suggestions)
+    except Exception:  # an odd stored review must not break the list
         return None
-    if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in bands.values()):
-        return None
-    return {k: float(v) for k, v in bands.items()}
 
 
 def review_summary(review_json: Optional[str]) -> dict:
-    """Criterion bands and correction counts for the sidebar, read from the stored review.
+    """Grammar numbers and correction counts for the sidebar, read from the stored review.
 
     Never raises: an odd review must not break the whole list.
     """
-    empty = {"bands": None, "correction_count": 0, "grammar_count": 0}
+    empty = {"metrics": None, "correction_count": 0, "grammar_count": 0}
     if not review_json:
         return empty
     try:
@@ -239,7 +236,7 @@ def review_summary(review_json: Optional[str]) -> dict:
     suggestions = review.get("suggestions")
     suggestions = [x for x in suggestions if isinstance(x, dict)] if isinstance(suggestions, list) else []
     return {
-        "bands": _criterion_bands(review.get("rubric")),
+        "metrics": _metrics(review, suggestions),
         "correction_count": len(suggestions),
         "grammar_count": sum(1 for x in suggestions if x.get("category") == "Grammar"),
     }

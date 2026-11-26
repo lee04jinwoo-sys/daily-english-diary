@@ -176,7 +176,7 @@ class _FakeClient:
 
 
 @pytest.mark.anyio
-async def test_review_is_persisted_with_clamped_bands(client, monkeypatch):
+async def test_review_is_persisted_with_grammar_numbers(client, monkeypatch):
     monkeypatch.setattr(gemini_service, "_client", _FakeClient(FAKE_REVIEW))
     e = (await client.post("/api/essays", json={"prompt": "Is chess a sport?", "essay_type": "free"})).json()
     content = "Chess is a sport because it is hard."
@@ -185,17 +185,14 @@ async def test_review_is_persisted_with_clamped_bands(client, monkeypatch):
     res = await client.post("/api/review", json={"essay_id": e["id"], "content": content})
     assert res.status_code == 200
     body = res.json()
-    r = body["rubric"]
-    assert r["task_response"]["band"] == 6.5   # rounded to nearest 0.5
-    assert r["lexical"]["band"] == 9.0         # clamped
-    assert r["grammar"]["band"] == 0.0         # clamped
-    # Overall is computed from the criteria (6.5, 6.0, 9.0, 0.0 -> 5.375 -> 5.5), not taken from the model.
-    assert r["overall_band"] == 5.5
+    assert body["rubric"] is None              # no band scores since 2026-11-26
+    assert body["metrics"]["words"] == 8
     assert body["suggestions"][0]["start_idx"] == content.index("it is hard")
 
     saved = (await client.get(f"/api/essays/{e['id']}")).json()
     assert saved["is_reviewed"] is True
-    assert saved["overall_band"] == 5.5
+    assert saved["overall_band"] is None
+    assert saved["review"]["metrics"] == body["metrics"]
     assert saved["review"]["argument"]["missing_counterargument"].startswith("체스")
     assert saved["review"]["revision_focus"] == ["반론 문단 추가", "근거 2개 이상"]
     sugs = (await client.get(f"/api/essays/{e['id']}/suggestions")).json()
@@ -247,9 +244,9 @@ async def test_stats_are_built_from_essays(client, monkeypatch):
     assert s["total_essays"] == 1
     assert s["total_words"] == 8
     assert s["current_streak"] == 1
-    assert s["band_trends"][0]["overall_band"] == 5.5
-    assert s["band_trends"][0]["lexical"] == 9.0
-    assert s["type_bands"]["free"] == 5.5
+    [day] = s["daily_activity"].values()
+    assert day["reviewed"] is True
+    assert len(s["essay_trends"]) == 1
 
 
 @pytest.mark.anyio

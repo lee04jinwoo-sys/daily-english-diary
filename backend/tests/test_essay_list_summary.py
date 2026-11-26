@@ -1,4 +1,4 @@
-"""The sidebar shows more than the prompt: criterion bands and the number of corrections, taken from
+"""The sidebar shows more than the prompt: grammar numbers and the number of corrections, taken from
 the stored review. The list must stay cheap and must never fail because one review is odd."""
 import pytest
 
@@ -10,21 +10,20 @@ def item_of(listing, essay_id):
 
 
 @pytest.mark.anyio
-async def test_a_reviewed_essay_lists_its_criterion_bands_and_correction_counts(client, monkeypatch):
+async def test_a_reviewed_essay_lists_its_grammar_numbers_and_correction_counts(client, monkeypatch):
     essay_id, body, _ = await _reviewed_essay(client, monkeypatch)
     item = item_of((await client.get("/api/essays")).json(), essay_id)
-    rubric = body["rubric"]
-    assert item["bands"] == {k: rubric[k]["band"] for k in ("task_response", "coherence", "lexical", "grammar")}
+    assert item["metrics"] == body["metrics"]
     assert item["correction_count"] == len(body["suggestions"])
     assert item["grammar_count"] == sum(1 for s in body["suggestions"] if s["category"] == "Grammar")
     assert item["correction_count"] > 0 and item["grammar_count"] > 0
 
 
 @pytest.mark.anyio
-async def test_an_unreviewed_essay_has_no_bands_and_zero_counts(client):
+async def test_an_unreviewed_essay_has_no_numbers_and_zero_counts(client):
     e = (await client.post("/api/essays", json={"prompt": "Work?", "essay_type": "free"})).json()
     item = item_of((await client.get("/api/essays")).json(), e["id"])
-    assert item["bands"] is None and item["correction_count"] == 0 and item["grammar_count"] == 0
+    assert item["metrics"] is None and item["correction_count"] == 0 and item["grammar_count"] == 0
 
 
 @pytest.mark.anyio
@@ -40,5 +39,5 @@ async def test_a_damaged_review_does_not_break_the_list(client, monkeypatch):
     res = await client.get("/api/essays")
     assert res.status_code == 200
     listing = res.json()
-    assert item_of(listing, other["id"])["bands"] is None
-    assert item_of(listing, essay_id)["bands"] is None and item_of(listing, essay_id)["correction_count"] == 0
+    assert item_of(listing, other["id"])["metrics"] is None
+    assert item_of(listing, essay_id)["metrics"] is None and item_of(listing, essay_id)["correction_count"] == 0

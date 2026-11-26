@@ -7,10 +7,10 @@ interface EssayPromptHeaderProps {
   essay: Essay;
   onPromptChange: (prompt: string) => void;
   onDateChange: (date: string) => void;
-  previousBand?: number | null;
+  previousErrors?: number | null;
 }
 
-export const EssayPromptHeader: React.FC<EssayPromptHeaderProps> = ({ essay, onPromptChange, onDateChange, previousBand }) => {
+export const EssayPromptHeader: React.FC<EssayPromptHeaderProps> = ({ essay, onPromptChange, onDateChange, previousErrors }) => {
   const isFree = essay.essay_type === 'free';
 
   return (
@@ -41,7 +41,7 @@ export const EssayPromptHeader: React.FC<EssayPromptHeaderProps> = ({ essay, onP
         {essay.revision_of && (
           <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/50">
             <RotateCcw className="w-3 h-3" />
-            <span>고쳐 쓰기{previousBand != null ? ` · 이전 Band ${previousBand.toFixed(1)}` : ''}</span>
+            <span>고쳐 쓰기{previousErrors != null ? ` · 이전 100단어당 오류 ${previousErrors.toFixed(1)}` : ''}</span>
           </span>
         )}
       </div>

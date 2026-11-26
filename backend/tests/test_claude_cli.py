@@ -136,7 +136,7 @@ async def test_review_calls_use_the_cli_and_never_the_paid_key(monkeypatch, labe
 
 @pytest.mark.anyio
 async def test_cli_failure_is_raised_not_replaced_by_the_paid_model(monkeypatch):
-    """A fallback would mix two models' band scores in the same trend."""
+    """A fallback would mix two models' corrections in the same trend."""
     monkeypatch.setattr(settings, "REVIEW_BACKEND", "claude_cli")
     fake_cli(monkeypatch, ClaudeCliError("limit reached"))
     paid = Router()
@@ -207,5 +207,5 @@ async def test_whole_review_runs_on_the_cli_backend(client, monkeypatch):
     e = (await client.post("/api/essays", json={"prompt": "Work?", "essay_type": "free"})).json()
     res = await client.post("/api/review", json={"essay_id": e["id"], "content": CONTENT})
     assert res.status_code == 200, res.text
-    assert res.json()["rubric"]["overall_band"] is not None
+    assert res.json()["metrics"] is not None
     assert paid.calls == [] and len(router.calls) >= 5

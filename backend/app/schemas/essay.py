@@ -3,7 +3,7 @@ import re
 from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.review import ReviewResponse
+from app.schemas.review import GrammarMetrics, ReviewResponse
 
 EssayType = Literal["agree_disagree", "discuss_both", "adv_disadv", "problem_solution", "two_part",
                     "hypothetical", "free"]
@@ -73,7 +73,7 @@ class EssayListItem(BaseModel):
     writing_seconds: int = 0
     preview: str
     updated_at: str
-    bands: Optional[Dict[str, float]] = Field(default=None, description="Criterion bands of the stored review")
+    metrics: Optional[GrammarMetrics] = Field(default=None, description="Grammar numbers of the stored review")
     correction_count: int = 0
     grammar_count: int = 0
 

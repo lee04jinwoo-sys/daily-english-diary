@@ -124,8 +124,8 @@ export const EssayCalendar: React.FC<EssayCalendarProps> = ({
             const isToday = new Date().toISOString().slice(0, 10) === dateStr;
             const isSelected = currentDate === dateStr;
 
-            const hasWritten = Boolean(activity && activity.best_band != null);
-            const isDraftOnly = Boolean(activity && activity.best_band == null && activity.word_count > 0);
+            const hasWritten = Boolean(activity && activity.reviewed);
+            const isDraftOnly = Boolean(activity && !activity.reviewed && activity.word_count > 0);
 
             return (
               <div
@@ -165,9 +165,11 @@ export const EssayCalendar: React.FC<EssayCalendarProps> = ({
                       <div className="text-[10px] text-emerald-800 dark:text-emerald-300 font-medium font-sans">
                         {activity!.essay_count}편 · {activity!.word_count} words
                       </div>
-                      <div className="text-[9px] text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/50 px-1 py-0.2 rounded font-semibold inline-block">
-                        Band {activity!.best_band!.toFixed(1)}
-                      </div>
+                      {activity!.best_errors_per_100 != null && (
+                        <div className="text-[9px] text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-900/50 px-1 py-0.2 rounded font-semibold inline-block" title="100단어당 문법 오류 (그날 가장 적은 글)">
+                          오류 {activity!.best_errors_per_100.toFixed(1)}
+                        </div>
+                      )}
                     </>
                   ) : isDraftOnly ? (
                     <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">

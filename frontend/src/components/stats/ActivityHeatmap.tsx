@@ -118,7 +118,7 @@ export const ActivityHeatmap: React.FC<ActivityHeatmapProps> = ({ dailyActivity 
                   {col.map((day) => {
                     const act = day.activity;
                     const tooltipText = act && act.word_count > 0
-                      ? `${day.dateStr}: ${act.essay_count}편, ${act.word_count}단어${act.best_band != null ? ` (최고 Band ${act.best_band.toFixed(1)})` : ''}`
+                      ? `${day.dateStr}: ${act.essay_count}편, ${act.word_count}단어${act.best_errors_per_100 != null ? ` (100단어당 오류 최소 ${act.best_errors_per_100.toFixed(1)})` : ''}`
                       : `${day.dateStr}: 에세이 없음`;
 
                     return (

@@ -13,7 +13,8 @@ class DailyActivity(BaseModel):
     date: str
     essay_count: int
     word_count: int
-    best_band: Optional[float] = None
+    reviewed: bool = False
+    best_errors_per_100: Optional[float] = Field(default=None, description="Lowest accuracy errors per 100 words that day")
 
 
 class EssayTrendItem(BaseModel):
@@ -30,19 +31,7 @@ class EssayTrendItem(BaseModel):
     idiom_density: float = Field(default=0.0, description="Naturalness fixes per 100 words")
     style_density: float = Field(default=0.0, description="Style suggestions per 100 words")
     nci: float = Field(default=0.0, description="Share of words kept unchanged by the minimal correction (%)")
-
-
-class BandTrendItem(BaseModel):
-    essay_id: str
-    number: int
-    date: str
-    essay_type: str
-    revision_of: Optional[str] = None
-    overall_band: float
-    task_response: float
-    coherence: float
-    lexical: float
-    grammar: float
+    clean_sentence_pct: int = Field(default=0, description="Share of sentences without an accuracy error (%)")
 
 
 class WritingTrendItem(BaseModel):
@@ -74,11 +63,9 @@ class StatsResponse(BaseModel):
     avg_idiom_density: float = 0.0
     avg_style_density: float = 0.0
     avg_nci: float = 0.0
-    avg_band: Optional[float] = None
+    avg_clean_sentence_pct: Optional[float] = None
     category_counts: Dict[str, int] = Field(default_factory=dict)
     top_subcategories: List[MistakeSample] = Field(default_factory=list)
     daily_activity: Dict[str, DailyActivity] = Field(default_factory=dict)
     essay_trends: List[EssayTrendItem] = Field(default_factory=list, description="Per reviewed essay, in writing order")
-    band_trends: List[BandTrendItem] = Field(default_factory=list)
-    type_bands: Dict[str, float] = Field(default_factory=dict, description="Average overall band per essay type")
     writing_trends: List[WritingTrendItem] = Field(default_factory=list)
