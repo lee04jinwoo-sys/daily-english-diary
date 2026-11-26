@@ -472,14 +472,19 @@ class GeminiService:
             ))
         return kept, patterns[:4], True
 
-    async def _find_errors(self, essay_id: str, prompt_text: str, content: str, spans: List[tuple]):
+    async def _find_errors(self, essay_id: str, prompt_text: str, content: str, spans: List[tuple],
+                           gec_task: Optional[asyncio.Task] = None):
         # The local GECToR server runs while the main detector does; its finds are extra candidates.
-        gec_task = asyncio.create_task(gec_client.correct([content[a:b] for a, b in spans]))
+        # A task passed in is shared by several runs, so only a task made here is cancelled on failure.
+        own = gec_task is None
+        if own:
+            gec_task = asyncio.create_task(gec_client.correct([content[a:b] for a, b in spans]))
         try:
             data = await self._generate_json(build_detect_prompt(prompt_text, content, spans), 0,
                                              thinking_budget=DETECT_THINKING_BUDGET, label="detect", essay_id=essay_id)
         except BaseException:
-            gec_task.cancel()
+            if own:
+                gec_task.cancel()
             raise
         candidates, dropped = self._candidates(content, spans, data.get("suggestions"))
         main_count = len(candidates)
@@ -505,8 +510,13 @@ class GeminiService:
         """Run the error step ERROR_RUNS times in parallel and return the whole run whose accuracy-error count
         is the median, plus every run's count. Verified runs beat unverified ones; failed runs are skipped
         (with two left, the lower count is used); if all fail, the first error is raised."""
-        results = await asyncio.gather(*[self._find_errors(essay_id, prompt_text, content, spans)
-                                         for _ in range(ERROR_RUNS)], return_exceptions=True)
+        # GECToR answers one request at a time and gives the same output for the same input: call it once.
+        gec_task = asyncio.create_task(gec_client.correct([content[a:b] for a, b in spans]))
+        try:
+            results = await asyncio.gather(*[self._find_errors(essay_id, prompt_text, content, spans, gec_task)
+                                             for _ in range(ERROR_RUNS)], return_exceptions=True)
+        finally:
+            gec_task.cancel()
         ok = [r for r in results if not isinstance(r, BaseException)]
         for r in results:
             if isinstance(r, BaseException):

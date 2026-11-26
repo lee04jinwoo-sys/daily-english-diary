@@ -88,3 +88,23 @@ async def test_every_run_failing_fails_the_review(client, monkeypatch):
     router = Router(detect=["boom", "boom", "boom"])
     res = await review(client, monkeypatch, router)
     assert res.status_code >= 500
+
+
+@pytest.mark.anyio
+async def test_gector_is_called_once_and_shared_by_every_run(client, monkeypatch):
+    # The GECToR server answers one request at a time; three parallel calls made two runs time out
+    # without its candidates (2026-11-26). Its output is fixed for the same input, so one call is shared.
+    from app.services import gec_client
+    calls = []
+
+    async def fake_correct(sentences):
+        calls.append(sentences)
+        out = list(sentences)
+        out[2] = "They have a car."
+        return out
+
+    monkeypatch.setattr(gec_client, "correct", fake_correct)
+    router = Router(detect=[ONE, ONE, ONE], verify=[accept_all(3)] * 3)
+    body = (await review(client, monkeypatch, router)).json()
+    assert len(calls) == 1
+    assert phrases(body) == ["dog", "has"]
