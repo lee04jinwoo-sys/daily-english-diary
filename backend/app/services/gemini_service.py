@@ -310,8 +310,7 @@ class GeminiService:
                 return data
             except llm_router.AllRoutesFailed as e:
                 logger.warning(f"Free routes failed, using the paid key: {e}")
-        if (label in REVIEW_LABELS and settings.REVIEW_BACKEND == "claude_cli"
-                and label not in settings.GEMINI_REVIEW_LABELS):
+        if label in REVIEW_LABELS and settings.REVIEW_BACKEND == "claude_cli":
             return await self._generate_json_cli(prompt, label, essay_id)
         for attempt in range(2):
             started = time.monotonic()
