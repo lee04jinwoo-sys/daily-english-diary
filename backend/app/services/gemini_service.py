@@ -231,15 +231,27 @@ def is_valid_similar_sentence(sentence: str, answer: str, mistake: str, referenc
     return not (mistake or "").strip() or not _whole_word(mistake).search(blank.sub(" ", s))
 
 
+_CONTEXT_OPENER_RE = re.compile(
+    r"^(?:Therefore|However|Conversely|Moreover|Furthermore|In\s+this\s+case|For\s+these\s+reasons|"
+    r"In\s+addition|On\s+the\s+other\s+hand|In\s+conclusion|As\s+a\s+result|Also)\s*,",
+    re.IGNORECASE,
+)
+MAX_CARD_WORDS = 25
+
+
 def card_draft_problem(sentence: str, translation: str, answer: str) -> Optional[str]:
-    """Why a prepared grammar-card draft cannot be used, or None: one whole sentence, the blank answer
-    exactly once as whole words (the card template's rule), and a Korean translation."""
+    """Why a prepared grammar-card draft cannot be used, or None: one whole standalone natural-length sentence,
+    the blank answer exactly once as whole words (the card template's rule), and a Korean translation."""
     if not sentence or len(split_sentences(sentence)) != 1 \
             or not re.match(r"[\"'(\[\u201c\u2018]?[A-Z0-9]", sentence) \
             or not re.search(r"[.!?][\"')\]\u201d\u2019]*$", sentence):
         return "완전한 한 문장이 아닙니다."
     if len(_whole_word(answer).findall(sentence)) != 1:
         return f"빈칸 정답 '{answer}'이(가) 문장에 정확히 한 번 있어야 합니다."
+    if _CONTEXT_OPENER_RE.match(sentence) and not sentence.lower().startswith(answer.strip().lower()):
+        return "문두 접속부사(Therefore, Conversely, In this case 등)를 빼고 단독 문장으로 쓰세요."
+    if len(sentence.split()) > MAX_CARD_WORDS:
+        return f"문장이 너무 깁니다 ({len(sentence.split())}단어 > {MAX_CARD_WORDS}단어). 간결한 한 문장으로 줄이세요."
     if not re.search(r"[가-힣]", translation or ""):
         return "한국어 해설이 없습니다."
     return None
@@ -1007,11 +1019,16 @@ JSON 응답 규격:
         """id -> {sentence, translation} for the drafts that pass the code rules."""
         listing = "\n".join(
             f'id={i["id"]} | 문장: {i["sentence"]} | 빈칸 정답: {i["answer"]} | 틀린 형태: {i["mistake"]}'
+            + (f' | 이전 반려 사유(반드시 해결): {reasons[i["id"]]}' if reasons.get(i["id"]) else "")
             for i in pending.values())
         prompt = f"""
-아래는 영어 문법 카드(빈칸 객관식)로 만들 문장입니다. 항목마다 JSON으로 답하세요.
-- sentence: 문장에 문법 오류(수일치, 관사, 셀 수 없는 명사, 시제, 쉼표로 문장 이어 붙이기 등)가 있으면 최소한으로 고친 문장, 없으면 그대로.
-  반드시 완전한 한 문장이어야 합니다. 빈칸 정답은 철자와 형태를 바꾸지 말고 정확히 한 번만 남기세요. 뜻은 바꾸지 마세요.
+아래는 영어 문법·문장 학습 카드(빈칸 객관식 + 듣기 복습)로 만들 문장입니다. 항목마다 JSON으로 답하세요.
+- sentence: 원문을 그대로 두지 말고, 아래 기준을 모두 만족하도록 **원어민 수준의 자연스럽고 간결한 독립 한 문장**으로 적극 교정하세요.
+  1) 문법 오류(수일치, 관사, 불가산명사, 시제, comma splice 등)가 전혀 없어야 합니다.
+  2) 콩글리시나 부자연스러운 연어(예: 'aptitude will shrink', 긍정문의 'save much time', 어색한 반복/장황함)를 원어민이 실제로 쓰는 자연스러운 표현으로 고치세요.
+  3) 앞 문단 없이 단독으로 읽어도 뜻이 분명해야 합니다. 문두 접속부사(Therefore, However, Conversely, In this case, Also 등)와 모호한 지시어(this curriculum, introducing this 등)는 제거하거나 구체 명사로 바꾸세요.
+  4) 길이는 **25단어 이하(권장 10~20단어)**로 간결하게 다듬으세요.
+  5) **빈칸 정답(answer)은 철자와 형태를 바꾸지 말고 정확히 한 번만** 남기세요.
 - translation: 최종 sentence의 자연스러운 한국어 번역. 빠뜨리거나 덧붙이지 말고 주어와 내용을 그대로 옮기세요.
 - distractors: 빈칸 정답 자리에 들어갈 오답 보기 2개. 정답과 같은 종류의 형태(관사·시제·전치사·수 등)로 만들되,
   빈칸에 넣으면 문장이 문법적으로 분명히 틀려야 합니다. 맞는 문장이 될 수 있는 표현(동의어, 다른 맞는 전치사 등)은 쓰지 마세요.
@@ -1041,7 +1058,7 @@ JSON 응답 규격:
         return out
 
     async def _check_cards(self, drafts: dict) -> dict:
-        """id -> None when Sonnet accepts both the grammar and the translation, else the problem."""
+        """id -> None when Sonnet accepts grammar, naturalness, translation, and single answer, else the problem."""
         if not drafts:
             return {}
         listing = "\n".join(
@@ -1051,11 +1068,12 @@ JSON 응답 규격:
         prompt = f"""
 아래는 영어 학습 카드입니다. 카드마다 엄격하게 검사해 JSON으로만 답하세요.
 - grammar_ok: 영어 문장이 문법적으로 완전히 옳은 한 문장이면 true. 수일치, 관사, 셀 수 없는 명사, 쉼표로 문장을 이어 붙인 것(comma splice) 등 오류가 하나라도 있으면 false.
+- natural_ok: 원어민이 실제로 쓸 만큼 자연스러운 영어이고, 앞 문맥 없이 단독으로 읽어도 뜻이 명확하면 true. 콩글리시·어색한 연어(예: 긍정문 much time, 어색한 동사 결합)·모호한 지시어(this/these)·불필요한 단어 중복이 있으면 false.
 - translation_ok: 한국어 해설이 영어 문장의 뜻을 빠짐없이, 다르게 바꾸지 않고 옮겼으면 true. 오역, 빠진 내용, 다른 단어(예: 주어가 다름)가 있으면 false.
 - single_answer_ok: 문장에서 빈칸 정답 자리에 오답 보기를 하나씩 넣었을 때 모두 틀린 문장이 되면 true. 하나라도 맞는 문장(또는 자연스러운 다른 뜻의 문장)이 되면 false.
 - problem: false인 항목이 있을 때만 무엇이 문제인지 한국어로 한 줄.
 
-{{"items": [{{"id": "...", "grammar_ok": true, "translation_ok": true, "single_answer_ok": true, "problem": ""}}]}}
+{{"items": [{{"id": "...", "grammar_ok": true, "natural_ok": true, "translation_ok": true, "single_answer_ok": true, "problem": ""}}]}}
 
 [카드]
 {listing}
@@ -1064,8 +1082,8 @@ JSON 응답 규격:
         for row in await self._card_call(prompt):
             id_ = str(row.get("id"))
             if id_ in drafts:
-                ok = all(row.get(k) is True for k in ("grammar_ok", "translation_ok", "single_answer_ok"))
-                verdicts[id_] = None if ok else (str(row.get("problem") or "").strip() or "문법·해설·단일 정답 검사를 통과하지 못했습니다.")
+                ok = all(row.get(k) is True for k in ("grammar_ok", "natural_ok", "translation_ok", "single_answer_ok"))
+                verdicts[id_] = None if ok else (str(row.get("problem") or "").strip() or "문법·자연스러움·해설·단일 정답 검사를 통과하지 못했습니다.")
         return verdicts
 
 

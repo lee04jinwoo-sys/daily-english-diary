@@ -23,12 +23,14 @@ def drafts(distractors=None, **by_id):
                       for k, (s, t) in by_id.items()]}
 
 
-def verdict(ok=(), bad=(), single_bad=()):
-    return {"items": [{"id": i, "grammar_ok": True, "translation_ok": True, "single_answer_ok": True} for i in ok]
-            + [{"id": i, "grammar_ok": False, "translation_ok": True, "single_answer_ok": True, "problem": f"problem {i}"}
+def verdict(ok=(), bad=(), single_bad=(), natural_bad=()):
+    return {"items": [{"id": i, "grammar_ok": True, "natural_ok": True, "translation_ok": True, "single_answer_ok": True} for i in ok]
+            + [{"id": i, "grammar_ok": False, "natural_ok": True, "translation_ok": True, "single_answer_ok": True, "problem": f"problem {i}"}
                for i in bad]
-            + [{"id": i, "grammar_ok": True, "translation_ok": True, "single_answer_ok": False, "problem": f"two answers {i}"}
-               for i in single_bad]}
+            + [{"id": i, "grammar_ok": True, "natural_ok": True, "translation_ok": True, "single_answer_ok": False, "problem": f"two answers {i}"}
+               for i in single_bad]
+            + [{"id": i, "grammar_ok": True, "natural_ok": False, "translation_ok": True, "single_answer_ok": True, "problem": f"unnatural {i}"}
+               for i in natural_bad]}
 
 
 def script(monkeypatch, *answers):
@@ -100,7 +102,7 @@ async def test_a_retry_that_passes_is_accepted_and_only_failing_items_are_resent
 @pytest.mark.anyio
 async def test_the_checker_may_answer_with_a_bare_list(monkeypatch):
     script(monkeypatch, drafts(a=(GOOD, KO)),
-           [{"id": "a", "grammar_ok": True, "translation_ok": True, "single_answer_ok": True}])
+           [{"id": "a", "grammar_ok": True, "natural_ok": True, "translation_ok": True, "single_answer_ok": True}])
     assert (await gemini_service.prepare_grammar_cards([ITEM]))["cards"]["a"]["sentence"] == GOOD
 
 
@@ -217,6 +219,40 @@ async def test_the_checker_sees_every_option_and_refuses_a_second_answer(monkeyp
 
 @pytest.mark.anyio
 async def test_a_missing_single_answer_verdict_is_not_a_pass(monkeypatch):
-    v = {"items": [{"id": "a", "grammar_ok": True, "translation_ok": True}]}
+    v = {"items": [{"id": "a", "grammar_ok": True, "natural_ok": True, "translation_ok": True}]}
     script(monkeypatch, drafts(a=(GOOD, KO)), v, drafts(a=(GOOD, KO)), v)
     assert (await gemini_service.prepare_grammar_cards([ITEM]))["cards"] == {}
+
+
+# ---------- natural standalone sentences: no essay transitions, no bloated 25+ word clauses (2026-11-26) ----------
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("bad_sentence", [
+    "Therefore, the result of the accidents is unpredictable.",
+    "Conversely, the result of the accidents is unpredictable.",
+    "In this case, the result of the accidents is unpredictable.",
+    "The result of the accidents is unpredictable because many people in different cities around the world often ignore basic safety rules when they are rushing to work every single morning.",
+])
+async def test_context_dependent_opener_and_long_sentences_are_rejected_by_code(monkeypatch, bad_sentence):
+    calls = script(monkeypatch, drafts(a=(bad_sentence, KO)), drafts(a=(bad_sentence, KO)))
+    out = await gemini_service.prepare_grammar_cards([ITEM])
+    assert out["cards"] == {} and "a" in out["rejected"]
+    assert len(calls) == 2
+
+
+@pytest.mark.anyio
+async def test_checker_rejects_unnatural_sentence_via_natural_ok(monkeypatch):
+    calls = script(monkeypatch, drafts(a=(GOOD, KO)), verdict(natural_bad=["a"]),
+                   drafts(a=(GOOD, KO)), verdict(natural_bad=["a"]))
+    out = await gemini_service.prepare_grammar_cards([ITEM])
+    assert out == {"cards": {}, "rejected": {"a": "unnatural a"}}
+    assert "natural_ok" in calls[1]["prompt"]
+
+
+@pytest.mark.anyio
+async def test_retry_prompt_includes_previous_rejection_reason(monkeypatch):
+    calls = script(monkeypatch, drafts(a=(GOOD, KO)), verdict(natural_bad=["a"]),
+                   drafts(a=(GOOD, KO)), verdict(ok=["a"]))
+    out = await gemini_service.prepare_grammar_cards([ITEM])
+    assert "a" in out["cards"]
+    assert "unnatural a" in calls[2]["prompt"]
