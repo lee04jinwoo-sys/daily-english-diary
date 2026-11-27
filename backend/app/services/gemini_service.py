@@ -236,22 +236,24 @@ _CONTEXT_OPENER_RE = re.compile(
     r"In\s+addition|On\s+the\s+other\s+hand|In\s+conclusion|As\s+a\s+result|Also)\s*,",
     re.IGNORECASE,
 )
-MAX_CARD_WORDS = 25
+MAX_CARD_WORDS = 20
 
 
-def card_draft_problem(sentence: str, translation: str, answer: str) -> Optional[str]:
-    """Why a prepared grammar-card draft cannot be used, or None: one whole standalone natural-length sentence,
-    the blank answer exactly once as whole words (the card template's rule), and a Korean translation."""
+def card_draft_problem(sentence: str, translation: str, answer: str, reference: str = "") -> Optional[str]:
+    """Why a prepared grammar-card draft cannot be used, or None: one whole standalone natural-length sentence
+    (fresh, not copied verbatim from the raw essay), the blank answer exactly once as whole words, and Korean translation."""
     if not sentence or len(split_sentences(sentence)) != 1 \
             or not re.match(r"[\"'(\[\u201c\u2018]?[A-Z0-9]", sentence) \
             or not re.search(r"[.!?][\"')\]\u201d\u2019]*$", sentence):
         return "완전한 한 문장이 아닙니다."
+    if reference and sentence.strip().lower() == reference.strip().lower():
+        return "에세이 원문 문장을 그대로 쓸 수 없습니다. 10~18단어의 새 원어민 예문을 작성하세요."
     if len(_whole_word(answer).findall(sentence)) != 1:
         return f"빈칸 정답 '{answer}'이(가) 문장에 정확히 한 번 있어야 합니다."
     if _CONTEXT_OPENER_RE.match(sentence) and not sentence.lower().startswith(answer.strip().lower()):
         return "문두 접속부사(Therefore, Conversely, In this case 등)를 빼고 단독 문장으로 쓰세요."
     if len(sentence.split()) > MAX_CARD_WORDS:
-        return f"문장이 너무 깁니다 ({len(sentence.split())}단어 > {MAX_CARD_WORDS}단어). 간결한 한 문장으로 줄이세요."
+        return f"문장이 너무 깁니다 ({len(sentence.split())}단어 > {MAX_CARD_WORDS}단어). 10~18단어로 간결하게 쓰세요."
     if not re.search(r"[가-힣]", translation or ""):
         return "한국어 해설이 없습니다."
     return None
@@ -1022,13 +1024,13 @@ JSON 응답 규격:
             + (f' | 이전 반려 사유(반드시 해결): {reasons[i["id"]]}' if reasons.get(i["id"]) else "")
             for i in pending.values())
         prompt = f"""
-아래는 영어 문법·문장 학습 카드(빈칸 객관식 + 듣기 복습)로 만들 문장입니다. 항목마다 JSON으로 답하세요.
-- sentence: 원문을 그대로 두지 말고, 아래 기준을 모두 만족하도록 **원어민 수준의 자연스럽고 간결한 독립 한 문장**으로 적극 교정하세요.
-  1) 문법 오류(수일치, 관사, 불가산명사, 시제, comma splice 등)가 전혀 없어야 합니다.
-  2) 콩글리시나 부자연스러운 연어(예: 'aptitude will shrink', 긍정문의 'save much time', 어색한 반복/장황함)를 원어민이 실제로 쓰는 자연스러운 표현으로 고치세요.
-  3) 앞 문단 없이 단독으로 읽어도 뜻이 분명해야 합니다. 문두 접속부사(Therefore, However, Conversely, In this case, Also 등)와 모호한 지시어(this curriculum, introducing this 등)는 제거하거나 구체 명사로 바꾸세요.
-  4) 길이는 **25단어 이하(권장 10~20단어)**로 간결하게 다듬으세요.
-  5) **빈칸 정답(answer)은 철자와 형태를 바꾸지 말고 정확히 한 번만** 남기세요.
+아래는 영어 문법·문장 학습 카드(빈칸 객관식 + 듣기 복습)로 만들 항목입니다. 항목마다 JSON으로 답하세요.
+- sentence: 참고 원문을 그대로 쓰거나 단순히 고치지 마세요. 해당 문법 포인트(빈칸 정답 vs 틀린 형태)만 정확히 테스트하는 **완전히 새로운 10~18단어 이내의 독립된 원어민 자연 문장**을 새로 작성하세요.
+  1) 참고 원문과 같은 문장을 쓰면 안 됩니다. 실생활·직장·일상 등 항목마다 서로 다른 자연스러운 소재를 쓰세요.
+  2) 문법 오류(수일치, 관사, 불가산명사, 시제, comma splice 등)와 콩글리시·부자연스러운 연어가 전혀 없는 원어민 영어여야 합니다.
+  3) 앞 문맥 없이 단독으로 읽어도 뜻이 완전히 분명해야 합니다. 문두 접속부사(Therefore, However, Conversely, In this case, Also 등)와 모호한 지시어(this/these)는 쓰지 마세요.
+  4) 길이는 **10~18단어(최대 20단어)**로 간결하게 작성하세요.
+  5) **빈칸 정답(answer)은 철자와 형태를 바꾸지 말고 정확히 한 번만** 포함하세요.
 - translation: 최종 sentence의 자연스러운 한국어 번역. 빠뜨리거나 덧붙이지 말고 주어와 내용을 그대로 옮기세요.
 - distractors: 빈칸 정답 자리에 들어갈 오답 보기 2개. 정답과 같은 종류의 형태(관사·시제·전치사·수 등)로 만들되,
   빈칸에 넣으면 문장이 문법적으로 분명히 틀려야 합니다. 맞는 문장이 될 수 있는 표현(동의어, 다른 맞는 전치사 등)은 쓰지 마세요.
@@ -1048,7 +1050,7 @@ JSON 응답 규격:
             translation = str(row.get("translation") or "").strip()
             raw = row.get("distractors")
             distractors = [str(d).strip() for d in raw] if isinstance(raw, list) else []
-            problem = card_draft_problem(sentence, translation, it["answer"]) \
+            problem = card_draft_problem(sentence, translation, it["answer"], reference=it.get("sentence", "")) \
                 or distractor_problem(distractors, it["answer"], it.get("mistake", ""))
             if problem:
                 reasons[it["id"]] = problem

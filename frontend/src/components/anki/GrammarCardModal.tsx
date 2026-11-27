@@ -48,7 +48,7 @@ export const GrammarCardModal: React.FC<GrammarCardModalProps> = ({ draft, onClo
         setDistractors(card.distractors);
         setCheckedKey(`${card.sentence}\n${a}\n${m}`);
         setCheckState('ok');
-        setCheckNote(card.sentence !== s ? '문장의 오류를 고쳤습니다.' : '');
+        setCheckNote(card.sentence !== s ? '문법 포인트에 맞는 새 원어민 예문을 만들었습니다.' : '');
         return card;
       }
       setCheckState('failed');

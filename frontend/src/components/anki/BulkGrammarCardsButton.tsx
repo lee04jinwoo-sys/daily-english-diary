@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import { RecurringPattern, SuggestionItem } from '../../types/essay';
-import { GrammarCardDraft, blankCount, planGrammarCards } from '../../utils/cardText';
+import { GrammarCardDraft, planGrammarCards } from '../../utils/cardText';
 import { BookmarkPlus, Check, Loader2 } from 'lucide-react';
 
 interface BulkGrammarCardsButtonProps {
@@ -18,14 +18,11 @@ interface BulkGrammarCardsButtonProps {
   onShowToast: (msg: string) => void;
 }
 
-type Phase = { kind: 'preparing' } | { kind: 'checking' } | { kind: 'adding'; done: number; total: number } | null;
+type Phase = { kind: 'checking' } | { kind: 'adding'; done: number; total: number } | null;
 
 /**
- * Adds every grammar card of the essay to Anki in one go, one request after another (Anki handles one
- * at a time). Each sentence gets a card from the learner's own sentence; Anki rejects two grammar notes
- * with the same sentence, so the other fixes of a sentence get a new, similar sentence written by the
- * model (checked in code: one blank, no wrong-form hint). The user sees both lists before anything is
- * added. Sentences already in Anki come back as duplicates and are skipped.
+ * Adds every grammar card of the essay to Anki in one go. Every fix gets a fresh, standalone
+ * 10-18 word native example sentence + distractors generated and checked by Sonnet before anything is added.
  */
 export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
   originalText, suggestions, patterns, essayId, registeredFixIds, onRegistered, ankiConnected, disabled, onShowToast,
@@ -51,33 +48,9 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
   }
 
   const run = async () => {
-    // 1. similar sentences for the fixes that share a sentence with a chosen one
-    const similar: GrammarCardDraft[] = [];
-    let similarMissing = 0;
-    if (extras.length > 0) {
-      setPhase({ kind: 'preparing' });
-      try {
-        const res = await api.similarSentences(
-          extras.map((e, i) => ({ id: String(i), answer: e.draft!.answer, mistake: e.draft!.mistake, sentence: e.draft!.sentence })),
-        );
-        extras.forEach((e, i) => {
-          const sentence = res.sentences[String(i)];
-          // the same blank rule the card template applies; the server already checked it, this is a guard
-          if (sentence && blankCount(sentence, e.draft!.answer) === 1) similar.push({ ...e.draft!, sentence });
-          else similarMissing++;
-        });
-      } catch (e: any) {
-        setPhase(null);
-        if (!window.confirm(`유사 문장을 만들지 못했습니다 (${e?.message || '오류'}).\n내 문장 카드 ${plan.cards.length}장만 등록할까요?`)) return;
-        similarMissing = extras.length;
-      }
-    }
-
-    // 2. every card is fixed (errors outside the blank), translated, and checked by Sonnet; a card that
-    //    does not pass is not added. Nothing unchecked is added: a failing check stops here.
-    const candidates = [...plan.cards, ...similar];
-    const own: GrammarCardDraft[] = [];
-    const sim: GrammarCardDraft[] = [];
+    // 1. Every fix gets a fresh 10-18w native standalone sentence, translation, and distractors checked by Sonnet.
+    const candidates: GrammarCardDraft[] = [...plan.cards, ...extras.map((e) => e.draft!)];
+    const ready: GrammarCardDraft[] = [];
     const rejected: string[] = [];
     setPhase({ kind: 'checking' });
     try {
@@ -86,36 +59,34 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
       );
       candidates.forEach((d, i) => {
         const c = res.cards[String(i)];
-        if (c) (i < plan.cards.length ? own : sim).push({ ...d, sentence: c.sentence, translation: c.translation, distractors: c.distractors });
-        else rejected.push(`${d.sentence.slice(0, 60)}${d.sentence.length > 60 ? '…' : ''} — ${res.rejected[String(i)] ?? '검사 실패'}`);
+        if (c) ready.push({ ...d, sentence: c.sentence, translation: c.translation, distractors: c.distractors });
+        else rejected.push(`${d.answer} (${d.mistake}) — ${res.rejected[String(i)] ?? '검사 실패'}`);
       });
     } catch (e: any) {
       setPhase(null);
-      onShowToast(`카드 문장 검사에 실패해 등록하지 않았습니다: ${e?.message || '오류'}`);
+      onShowToast(`카드 예문 생성·검사에 실패해 등록하지 않았습니다: ${e?.message || '오류'}`);
       return;
     }
 
-    // 3. one confirmation with everything that will be added
+    // 2. One confirmation with all generated standalone sentences before adding
     const other = plan.skipped.filter((s) => s.reason !== 'same_sentence').length;
-    const shown = sim.slice(0, 10).map((d) => `· ${d.sentence}`).join('\n');
+    const shown = ready.slice(0, 10).map((d) => `· ${d.sentence}`).join('\n');
     const lines = [
-      `문법 카드를 Anki에 등록할까요? (문장·해설 검사 통과)`,
-      `· 내 문장 ${own.length}장` + (sim.length ? ` + 유사 문장 ${sim.length}장` : ''),
-      sim.length ? `\n유사 문장 (모델이 만든 새 문장):\n${shown}${sim.length > 10 ? `\n… 외 ${sim.length - 10}장` : ''}` : '',
+      `문법 카드 ${ready.length}장을 Anki에 등록할까요? (새 원어민 예문 · 검사 통과)`,
+      shown ? `\n생성된 예문:\n${shown}${ready.length > 10 ? `\n… 외 ${ready.length - 10}장` : ''}` : '',
       rejected.length ? `\n검사를 통과하지 못해 제외: ${rejected.length}건\n${rejected.slice(0, 5).map((r) => `· ${r}`).join('\n')}` : '',
-      similarMissing ? `\n유사 문장을 만들지 못해 제외: ${similarMissing}건` : '',
-      other ? `한 문장으로 된 빈칸을 만들 수 없는 교정 ${other}건은 제외됩니다.` : '',
+      other ? `빈칸을 만들 수 없는 교정 ${other}건은 제외됩니다.` : '',
       '\n이미 Anki에 있는 문장은 건너뜁니다.',
     ].filter(Boolean).join('\n');
     setPhase(null);
-    if (own.length + sim.length === 0) {
+    if (ready.length === 0) {
       onShowToast(`등록할 카드가 없습니다: ${rejected.length}건이 검사를 통과하지 못했습니다.`);
       return;
     }
     if (!window.confirm(lines)) return;
 
-    // 4. add them one by one, each with its checked translation
-    const cards = [...own, ...sim];
+    // 3. Add them one by one with checked translation & distractors
+    const cards = ready;
     stopRef.current = false;
     let added = 0, duplicate = 0, failed = 0;
     let stopped = '';
@@ -145,8 +116,7 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
   };
 
   const label =
-    phase?.kind === 'preparing' ? '유사 문장 만드는 중...'
-    : phase?.kind === 'checking' ? '문장·해설 검사 중...'
+    phase?.kind === 'checking' ? '새 예문 생성·검사 중...'
     : phase?.kind === 'adding' ? `등록 중 ${phase.done + 1}/${phase.total}`
     : `문법 카드 일괄 등록 (${total})`;
 
@@ -155,7 +125,7 @@ export const BulkGrammarCardsButton: React.FC<BulkGrammarCardsButtonProps> = ({
       <button
         onClick={run}
         disabled={busy || disabled || !ankiConnected}
-        title={ankiConnected ? '이 에세이의 문법 교정을 모두 Anki 문법 카드로 등록 (한 문장에 교정이 여럿이면 유사 문장으로)' : 'Anki 연결 안 됨'}
+        title={ankiConnected ? '이 에세이의 문법 교정마다 10~18단어 새 원어민 예문으로 Anki 문법 카드 등록' : 'Anki 연결 안 됨'}
         className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-violet-200 dark:border-violet-800/60 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-950/70 disabled:opacity-50 transition-colors"
       >
         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookmarkPlus className="w-3.5 h-3.5" />}

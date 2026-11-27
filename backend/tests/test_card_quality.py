@@ -224,20 +224,29 @@ async def test_a_missing_single_answer_verdict_is_not_a_pass(monkeypatch):
     assert (await gemini_service.prepare_grammar_cards([ITEM]))["cards"] == {}
 
 
-# ---------- natural standalone sentences: no essay transitions, no bloated 25+ word clauses (2026-11-26) ----------
+# ---------- natural standalone sentences: fresh 10-18w native examples, <=20w, no copying raw essay (2026-11-26) ----------
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("bad_sentence", [
     "Therefore, the result of the accidents is unpredictable.",
     "Conversely, the result of the accidents is unpredictable.",
     "In this case, the result of the accidents is unpredictable.",
-    "The result of the accidents is unpredictable because many people in different cities around the world often ignore basic safety rules when they are rushing to work every single morning.",
+    "The result of the accidents is unpredictable because many people in busy cities ignore basic safety rules every single morning on their way.",
+    ITEM["sentence"],  # copying the raw essay sentence verbatim is rejected
 ])
-async def test_context_dependent_opener_and_long_sentences_are_rejected_by_code(monkeypatch, bad_sentence):
+async def test_context_dependent_opener_long_or_verbatim_sentences_are_rejected_by_code(monkeypatch, bad_sentence):
     calls = script(monkeypatch, drafts(a=(bad_sentence, KO)), drafts(a=(bad_sentence, KO)))
     out = await gemini_service.prepare_grammar_cards([ITEM])
     assert out["cards"] == {} and "a" in out["rejected"]
     assert len(calls) == 2
+
+
+@pytest.mark.anyio
+async def test_writer_prompt_requests_fresh_10_to_18_word_native_sentence(monkeypatch):
+    calls = script(monkeypatch, drafts(a=(GOOD, KO)), verdict(ok=["a"]))
+    await gemini_service.prepare_grammar_cards([ITEM])
+    p = calls[0]["prompt"]
+    assert "10~18" in p and "그대로" in p
 
 
 @pytest.mark.anyio
