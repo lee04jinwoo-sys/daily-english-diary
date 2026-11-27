@@ -177,7 +177,7 @@ export const AnkiCardModal: React.FC<AnkiCardModalProps> = ({
           {/* Destination (fixed by Anki Manager) */}
           <div className="text-[11px] text-stone-500 dark:text-stone-400 bg-stone-50 dark:bg-[#1a1a1a] border border-stone-200 dark:border-[#383838] rounded-lg px-3 py-2">
             <span className="font-mono">{deckName || (cardType === 'sentence' ? '1. Language::1.1. English::Sentence' : '1. Language::1.1. English::Vocabulary')}</span>
-            {cardType === 'vocab' && <span> · 예문·설명은 Anki Manager가 자기 규칙으로 생성하고 유의어는 비워 둡니다</span>}
+            {cardType === 'vocab' && <span> · 예문은 Anki Manager가 자기 규칙으로 생성합니다</span>}
           </div>
 
           {/* Front */}
