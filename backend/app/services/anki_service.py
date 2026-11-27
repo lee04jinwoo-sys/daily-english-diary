@@ -118,7 +118,7 @@ class AnkiService:
     def add_vocab_card(self, req: VocabCardRequest) -> AnkiActionResponse:
         """Adds a vocabulary card via the Anki Manager gateway.
 
-        Only word, meaning and POS are sent; the gateway writes example and explanation
+        Only word, meaning and POS are sent; the gateway writes example
         under its own rules. Synonyms are always empty there.
         """
         if not self.check_connection():
@@ -143,7 +143,7 @@ class AnkiService:
     def add_grammar_card(self, req: GrammarCardRequest) -> AnkiActionResponse:
         """Grammar multiple-choice card via the gateway: the answer is blanked, my mistake is a wrong option.
 
-        The gateway checks the blank, fills translation/explanation/other options under its rules,
+        The gateway checks the blank, fills translation/other options under its rules,
         and refuses cards whose four options are not distinct.
         """
         sentence, answer = req.sentence.strip(), req.answer.strip()
